@@ -61,6 +61,12 @@ const nextConfig = {
         hostname: "pub-c5726c6e6e084e2eb959739e0af1646a.r2.dev",
       },
 
+      // Backblaze B2 public bucket endpoint
+      {
+        protocol: "https",
+        hostname: "f003.backblazeb2.com",
+      },
+
       // for testing
       {
         protocol: "https",

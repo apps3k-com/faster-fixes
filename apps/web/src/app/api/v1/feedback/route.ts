@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
       const asset = await createAsset({
         key,
         bucket,
-        provider: "r2",
+        provider: "b2",
         filename: `screenshot.${ext}`,
         mimeType: screenshotField.type,
         size: buffer.length,

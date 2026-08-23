@@ -46,13 +46,13 @@ DATABASE_URL="postgresql://user:password@host:5432/db?schema=public"
 BETTER_AUTH_SECRET="<generate with: openssl rand -base64 32>"
 BETTER_AUTH_URL="https://your-domain.com"
 
-# Storage (Cloudflare R2)
-STORAGE_REGION="auto"
+# Storage (Backblaze B2)
+STORAGE_REGION="eu-central-003"
 STORAGE_BUCKET_NAME="your-bucket"
-NEXT_PUBLIC_STORAGE_BASE_URL="https://<account-id>.r2.cloudflarestorage.com/your-bucket"
-R2_ACCOUNT_ID="..."
-R2_ACCESS_KEY_ID="..."
-R2_SECRET_ACCESS_KEY="..."
+NEXT_PUBLIC_STORAGE_BASE_URL="https://f003.backblazeb2.com/file/your-bucket"
+B2_REGION="eu-central-003"
+B2_APP_KEY_ID="..."
+B2_APP_KEY="..."
 
 # Inngest (required in production)
 INNGEST_EVENT_KEY="..."
@@ -72,7 +72,7 @@ NEXT_PUBLIC_IS_CLOUD="false"
 
 GitHub App variables are optional. Skip them unless you need the GitHub integration. Leave the Stripe variables unset — billing is cloud-only and self-hosted installs don't run it.
 
-If you prefer AWS S3 over Cloudflare R2, use `AWS_ACCESS_KEY_ID`, `AWS_BUCKET_NAME`, and `AWS_SECRET_ACCESS_KEY` instead of the R2 variables.
+The Backblaze bucket needs a CORS rule that allows your dashboard origin to use `GET`, `HEAD`, and `PUT` with the signed-upload headers. The bucket may be public for browser-rendered profile and organization images, while feedback screenshots continue to use short-lived signed URLs.
 
 ## 3. Provision external services
 

@@ -56,7 +56,7 @@ model Asset {
 
     key      String   // storage path — see "Key Convention" below
     bucket   String   // bucket name at time of upload
-    provider String   // "s3" | "r2" | "minio" (validated in app layer, not a DB enum)
+    provider String   // "s3" | "r2" | "b2" | "minio" (validated in app layer, not a DB enum)
 
     filename String   // original filename as uploaded by the user
     mimeType String   // "image/jpeg", "application/pdf", etc.

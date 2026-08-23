@@ -103,7 +103,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   const asset = await createAsset({
     key,
     bucket,
-    provider: "r2",
+    provider: "b2",
     filename: `screenshot.${ext}`,
     mimeType: screenshotField.type,
     size: buffer.length,

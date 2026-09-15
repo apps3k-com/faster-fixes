@@ -8,7 +8,7 @@ This is a **single-context** repo (one product, one domain language across `apps
 
 ```
 /
-├── CONTEXT.md            ← glossary (created lazily by /grill-with-docs)
+├── CONTEXT.md            ← glossary
 ├── docs/
 │   ├── adr/              ← architectural decisions
 │   ├── product/          ← product context (problem, solution, ICP)
@@ -22,15 +22,17 @@ This is a **single-context** repo (one product, one domain language across `apps
 
 ## Before exploring, read these
 
-- **`CONTEXT.md`** at the repo root — domain glossary. If it doesn't exist yet, **proceed silently**. Don't flag its absence; don't suggest creating it upfront. The producer skill (`/grill-with-docs`) creates it lazily when terms get pinned down.
+- **`CONTEXT.md`** at the repo root — domain glossary.
 - **`docs/adr/`** — read ADRs that touch the area you're about to work in.
 - **`docs/product/project.md`** and **`docs/product/icp.md`** — broader product context (problem, solution, target users). Useful when the work needs more than the glossary alone (e.g. naming features, writing user-facing copy, weighing trade-offs against the target user).
+
+If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill creates and updates them when terms or decisions actually get resolved.
 
 ## Use the glossary's vocabulary
 
 When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
 
-If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/grill-with-docs`).
+If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
 
 ## Flag ADR conflicts
 

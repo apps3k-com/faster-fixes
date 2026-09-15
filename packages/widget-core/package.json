@@ -8,7 +8,7 @@
   "homepage": "https://faster-fixes.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/manucoffin/faster-fixes.git",
+    "url": "git+https://github.com/manucoffin/faster-fixes.git",
     "directory": "packages/widget-core"
   },
   "bugs": {

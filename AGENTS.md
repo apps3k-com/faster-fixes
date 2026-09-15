@@ -111,6 +111,10 @@ Issues live in GitHub Issues at `manucoffin/faster-fixes`. See `docs/agents/issu
 
 Default canonical vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
 
+### Releasing packages
+
+`@fasterfixes/*` packages are published by CI from `main` through Changesets. Use the `release` skill to write the changeset; CI is the only publisher.
+
 ### Domain docs
 
-Single-context repo. Glossary at `CONTEXT.md` (created lazily by `/grill-with-docs`); ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+Single-context repo. Glossary at `CONTEXT.md`; ADRs in `docs/adr/`. See `docs/agents/domain.md`.

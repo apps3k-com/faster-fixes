@@ -6,7 +6,6 @@ import {
   flip,
   shift,
 } from "@floating-ui/react";
-import { domToBlob } from "modern-screenshot";
 import { generateSelectors, captureElementContext, getBrowserInfo } from "@fasterfixes/core";
 import { useFeedbackContext } from "../context.js";
 import {
@@ -16,6 +15,7 @@ import {
   secondaryButtonStyle,
 } from "../styles.js";
 import { clamp, createPinPlacementMetadata } from "../utils.js";
+import { captureViewportScreenshot } from "../screenshot.js";
 
 const FADEOUT_DURATION = 200;
 
@@ -179,19 +179,7 @@ export function CommentPopover() {
 
       // Full capture too slow — retry without images/videos for a fast lightweight capture
       if (!screenshot) {
-        screenshot = await domToBlob(document.body, {
-          width: window.innerWidth,
-          height: window.innerHeight,
-          scale: window.devicePixelRatio || 1,
-          features: { restoreScrollPosition: true },
-          filter: (el: Node) => {
-            if (el instanceof Element && el.hasAttribute("data-ff-widget")) return false;
-            if (el instanceof HTMLImageElement) return false;
-            if (el instanceof HTMLVideoElement) return false;
-            if (el instanceof HTMLPictureElement) return false;
-            return true;
-          },
-        }).catch(() => null);
+        screenshot = await captureViewportScreenshot({ lightweight: true });
       }
 
       if (!screenshot) return;

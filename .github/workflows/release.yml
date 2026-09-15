@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# One release run at a time, never cancelled: a cancelled publish can leave a package half-released.
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write # push the "Version Packages" branch and git tags
+  pull-requests: write # open and update the "Version Packages" PR
+  id-token: write # mint the OIDC token npm exchanges for a short-lived publish credential
+
+jobs:
+  release:
+    name: Version or publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # changesets needs the full history to compute which packages changed since main
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+
+      # No registry-url: with it, setup-node writes an .npmrc that reads an unset NODE_AUTH_TOKEN,
+      # and an auth line, even empty, stops npm from attempting the OIDC exchange.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # pnpm 10 delegates publish to the npm CLI, and trusted publishing needs npm >= 11.5.1.
+      # Node 22 still bundles npm 10. Pinned to a major rather than `latest`: the npm 12 release
+      # changed the `npm info --json` shape and crashed `changeset publish` until changesets 3.0.3.
+      - run: npm install -g npm@11
+
+      - run: pnpm install --frozen-lockfile
+
+      # Provenance is attached automatically under trusted publishing; no flag or token needed.
+      - name: Version packages or publish to npm
+        uses: changesets/action@v2
+        with:
+          version-script: pnpm version-packages
+          publish-script: pnpm release
+          commit-message: "chore(release): version packages"
+          pr-title: "chore(release): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

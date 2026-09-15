@@ -1,83 +1,14 @@
 ---
 name: commit
-description: Create git commits following Commitizen conventions. Use this skill whenever the user wants to commit work, stage changes, write a commit message, or says things like "commit this", "let's commit", "commit my changes", "create a commit", or "/commit". Automatically groups unrelated changes into separate focused commits. Always prefer this skill over ad-hoc committing.
+description: Create focused git commits, one concern each, in Commitizen format. Use when the user asks to commit or stage work, when a commit message needs writing, or when another skill reaches its commit step.
 ---
 
-# Commit
+Read `git status` and `git diff HEAD` to see everything uncommitted, untracked files included. Understand what the work actually did before naming it.
 
-Analyze the current git diff, group changes by logical concern, and create one focused commit per group.
+Group the changes so each commit holds a single concern: one feature, one fix, one refactor, one chore. When a group feels mixed, split it. When everything genuinely serves one purpose, a single commit is the right answer.
 
-## Context to gather first
+Commit each group in turn: stage that group's paths explicitly with `git add <paths>`, then `git commit -m "<message>"`. Done when every changed and untracked file sits in a commit.
 
-Run these before doing anything else:
+Messages follow Commitizen: one imperative line, scoped, no trailing period, e.g. `fix(sidebar): stop radix Slot from dropping RSC children during SSR`. `git log --oneline -20` shows the types and scopes in use here.
 
-```
-git status
-git diff HEAD
-git branch --show-current
-git log --oneline -10
-```
-
-## Process
-
-### 1. Understand the changes
-
-Read the full diff carefully. For each changed file, ask: what is this change actually doing? Why does it exist?
-
-### 2. Group by concern
-
-Separate changes into groups where each group serves a single purpose:
-
-- **Related** = same feature, same bug fix, same refactor, same chore
-- **Unrelated** = different features, different bugs, different purposes
-
-When in doubt, err toward splitting rather than lumping. A focused commit is always better than a mixed one.
-
-### 3. For each group, commit in sequence
-
-**a. Generate 3 candidates** using Commitizen format:
-
-| Prefix | When to use |
-|--------|-------------|
-| `feat:` | New feature or capability |
-| `fix:` | Bug fix |
-| `refactor:` | Code change that neither fixes a bug nor adds a feature |
-| `docs:` | Documentation only |
-| `chore:` | Build process, tooling, dependencies |
-| `style:` | Formatting, missing semicolons, etc. (no logic change) |
-| `test:` | Adding or fixing tests |
-| `perf:` | Performance improvement |
-
-Use scopes when helpful: `feat(auth):`, `fix(api):`, etc.
-
-**b. Pick the best candidate** — the one that most precisely captures the intent. Briefly note why.
-
-**c. Stage only the files for this group:**
-```
-git add <file1> <file2> ...
-```
-
-**d. Commit:**
-```
-git commit -m "<selected message>"
-```
-
-Repeat for each remaining group.
-
-## Constraints
-
-- **Never** add a `Co-Authored-By: Codex` line (or any co-authorship line) to commit messages
-- **Never** use `git add .` or `git add -A` when making multiple commits — always stage files selectively
-- Keep messages concise: one imperative line, no period at the end
-- If all changes are clearly related, a single commit is fine
-
-## Example
-
-Given a diff that touches:
-- `src/auth/login.ts` — adds JWT validation
-- `src/auth/logout.ts` — adds JWT invalidation
-- `CHANGELOG.md` — updates release notes
-
-This splits into two commits:
-1. Stage `src/auth/login.ts` + `src/auth/logout.ts` → `feat(auth): add JWT validation and invalidation`
-2. Stage `CHANGELOG.md` → `docs: update changelog for JWT auth`
+Sign the work as the user alone: the message ends on its subject line, with no `Co-Authored-By` line and no Claude Code footer.

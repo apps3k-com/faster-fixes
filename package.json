@@ -8,12 +8,21 @@
     "lint": "turbo run lint",
     "lint:agent-rules": "turbo run lint:agent-rules --filter=web",
     "typecheck": "turbo run typecheck",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "build:packages": "turbo run build --filter='@fasterfixes/*'",
+    "check:packages": "pnpm build:packages && turbo run typecheck lint --filter='@fasterfixes/*' && pnpm publint",
+    "publint": "pnpm -r --filter \"@fasterfixes/*\" exec publint --strict",
+    "changeset": "changeset",
+    "version-packages": "changeset version && pnpm install --lockfile-only",
+    "release": "pnpm build:packages && changeset publish"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3",
     "@workspace/eslint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
     "prettier": "^3.7.4",
+    "publint": "^0.3.24",
     "turbo": "^2.6.3",
     "typescript": "5.7.3"
   },

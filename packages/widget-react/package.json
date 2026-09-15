@@ -1,6 +1,6 @@
 {
   "name": "@fasterfixes/react",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "React feedback widget for FasterFixes. Drop-in component for collecting visual feedback with screenshots, element annotations, and inline comments.",
   "type": "module",
   "license": "MIT",
@@ -8,7 +8,7 @@
   "homepage": "https://faster-fixes.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/manucoffin/faster-fixes.git",
+    "url": "git+https://github.com/manucoffin/faster-fixes.git",
     "directory": "packages/widget-react"
   },
   "bugs": {

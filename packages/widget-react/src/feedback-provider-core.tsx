@@ -38,6 +38,7 @@ export type FeedbackProviderCoreProps = {
   labels?: Partial<Labels>;
   captureDiagnostics?: boolean;
   apiOrigin?: string;
+  appVersion?: string;
   children: React.ReactNode;
 };
 
@@ -61,6 +62,7 @@ export function FeedbackProviderCore({
   labels: customLabels,
   captureDiagnostics = true,
   apiOrigin = DEFAULT_API_ORIGIN,
+  appVersion,
   children,
 }: FeedbackProviderCoreProps) {
   const [mode, setMode] = useState<WidgetMode>("idle");
@@ -400,7 +402,7 @@ export function FeedbackProviderCore({
               {isActive && <FeedbackList />}
             </div>
 
-            <CommentPopover />
+            <CommentPopover appVersion={appVersion} />
             <PinPopover />
           </div>,
           document.body,

@@ -15,11 +15,12 @@ import {
   secondaryButtonStyle,
 } from "../styles.js";
 import { clamp, createPinPlacementMetadata } from "../utils.js";
+import { withAppVersion } from "../submission-metadata.js";
 import { captureViewportScreenshot } from "../screenshot.js";
 
 const FADEOUT_DURATION = 200;
 
-export function CommentPopover() {
+export function CommentPopover({ appVersion }: { appVersion?: string }) {
   const {
     mode,
     setMode,
@@ -128,7 +129,7 @@ export function CommentPopover() {
           selector,
           clickX: clickCoords?.x,
           clickY: clickCoords?.y,
-          metadata,
+          metadata: withAppVersion(metadata, appVersion),
           diagnosticTrail,
           ...browserInfo,
         },

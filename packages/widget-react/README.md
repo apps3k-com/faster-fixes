@@ -67,6 +67,7 @@ The color is applied as a `--ff-accent` CSS custom property on the widget root. 
 | ------------ | --------------------- | -------- | ---------------------------------------------------------------- |
 | `projectId`  | `string`              | Yes      | Your Faster Fixes Project ID (found in project settings)         |
 | `apiKey`     | `string`              | No       | Deprecated alias for `projectId`; removed in a future major.     |
+| `appVersion` | `string` | No | Release of the loaded application; saved as `metadata.appVersion`. Pass a build-time value so stale tabs retain their actual release. |
 | `apiOrigin`  | `string`              | No       | Custom API origin (default: `https://www.faster-fixes.com`)      |
 | `color`      | `string`              | No       | Widget accent color — any CSS color value (default: `#02527E`)   |
 | `position`   | `WidgetPosition`      | No       | Floating button position (default: `bottom-right`)               |

@@ -21,6 +21,8 @@ type FeedbackProviderProps = {
    */
   apiKey?: string;
   apiOrigin?: string;
+  /** Release of the loaded application, supplied by the host build. */
+  appVersion?: string;
   color?: string;
   position?: WidgetPosition;
   classNames?: Partial<ClassNames>;
@@ -35,6 +37,7 @@ export function FeedbackProvider({
   projectId,
   apiKey,
   apiOrigin,
+  appVersion,
   color,
   position,
   classNames,
@@ -82,6 +85,7 @@ export function FeedbackProvider({
 
   return (
     <FeedbackProviderCore
+      appVersion={appVersion}
       client={client}
       reviewerToken={reviewerToken}
       config={config}

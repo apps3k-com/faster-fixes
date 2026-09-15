@@ -75,6 +75,7 @@ export async function listFeedbacks(req: NextRequest) {
         : null,
       metadata: f.metadata as Record<string, unknown> | null,
       diagnosticTrail: f.diagnosticTrail as DiagnosticTrail | null,
+      reviewerId: f.reviewerId,
       reviewerName: f.reviewer.name,
       createdAt: f.createdAt,
     })),

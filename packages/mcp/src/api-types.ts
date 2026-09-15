@@ -20,6 +20,7 @@ export type FeedbackJson = {
   browserVersion: string | null;
   os: string | null;
   screenshotUrl: string | null;
+  reviewerId: string;
   reviewerName: string;
   createdAt: string;
 };

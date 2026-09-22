@@ -74,6 +74,7 @@ const png = Buffer.from(
 const actualFetch = globalThis.fetch;
 let failNextReference = false;
 let loseNextCreateResponse = false;
+let partialIntakeDetails = false;
 let denyProjectListing = false;
 let duringDiagnosticUpload: (() => Promise<void>) | null = null;
 
@@ -147,7 +148,11 @@ globalThis.fetch = async (input, init) => {
       return page(
         [...remoteIssues.values()]
           .filter((issue) => issue.intakeId)
-          .map((issue) => ({ id: issue.intakeId, issue })),
+          .map((issue) => ({
+            id: issue.intakeId,
+            issue: issue.id,
+            issue_detail: partialIntakeDetails ? { id: issue.id } : issue,
+          })),
       );
     const sent = body.issue as Record<string, unknown>;
     const issue: RemoteIssue = {
@@ -159,7 +164,48 @@ globalThis.fetch = async (input, init) => {
       description_html: String(sent.description_html),
     };
     remoteIssues.set(issue.id, issue);
-    return response({ id: issue.intakeId, issue }, 201);
+    if (loseNextCreateResponse) {
+      loseNextCreateResponse = false;
+      return response({ error: "Response lost after Intake creation" }, 503);
+    }
+    return response(
+      {
+        id: issue.intakeId,
+        issue: issue.id,
+        issue_detail: partialIntakeDetails ? { id: issue.id } : issue,
+      },
+      201,
+    );
+  }
+  const intakeIssueId = path.match(/\/intake-issues\/([^/]+)\//)?.[1];
+  if (intakeIssueId) {
+    const issue = remoteIssues.get(intakeIssueId);
+    assert.ok(
+      issue?.intakeId,
+      "Intake detail must use the work item ID, not the Intake row ID.",
+    );
+    if (method === "PATCH") {
+      assert.deepEqual(
+        Object.keys(body),
+        ["issue"],
+        "Patching metadata must not accept or change Intake status.",
+      );
+      const sent = body.issue as Record<string, unknown>;
+      const localLink = await prisma.feedbackPlaneIssueLink.findUnique({
+        where: { feedbackId: String(sent.external_id) },
+      });
+      assert.equal(
+        localLink?.issueId,
+        issue.id,
+        "Persist correlation before updating remote metadata.",
+      );
+      Object.assign(issue, sent);
+    } else assert.equal(method, "GET");
+    return response({
+      id: issue.intakeId,
+      issue: issue.id,
+      issue_detail: issue,
+    });
   }
   if (path.endsWith("/work-items/")) {
     if (method === "GET") {
@@ -243,6 +289,11 @@ globalThis.fetch = async (input, init) => {
     return new Response(null, { status: 204 });
   }
   assert.ok(path.endsWith(`/work-items/${issue.id}/`));
+  if (issue.intakeId)
+    return response(
+      { error: "Issue is in Intake", error_code: 4099, intake_status: -2 },
+      404,
+    );
   if (method === "PATCH") Object.assign(issue, body);
   return response(issue);
 };
@@ -418,6 +469,10 @@ async function main() {
   });
   const intakeIssue = remoteIssues.get(intakeLink.issueId)!;
   assert.ok(intakeLink.intakeId);
+  assert.equal(
+    new URL(intakeLink.issueUrl).searchParams.get("inboxIssueId"),
+    intakeIssue.id,
+  );
   assert.equal(intakeIssue.state, "triage");
   assert.equal(intakeIssue.external_id, intakeFeedback.id);
   assert.equal(intakeIssue.type_id, typeId);
@@ -429,7 +484,7 @@ async function main() {
   const patchIndex = intakeCalls.findIndex(
     (call) =>
       call.method === "PATCH" &&
-      call.path.endsWith(`/work-items/${intakeIssue.id}/`),
+      call.path.endsWith(`/intake-issues/${intakeIssue.id}/`),
   );
   const propertyIndex = intakeCalls.findIndex((call) =>
     call.path.endsWith(`/work-item-properties/${fieldId}/values/`),
@@ -437,6 +492,70 @@ async function main() {
   assert.ok(
     createIndex >= 0 && patchIndex > createIndex && propertyIndex > patchIndex,
     "Intake creation must precede field patching and custom reference.",
+  );
+
+  const uncertainIntake = await newFeedback(
+    "Intake accepted remotely, response lost",
+    true,
+  );
+  await queuePlaneExport(uncertainIntake.id);
+  const countBeforeUncertainIntake = remoteIssues.size;
+  loseNextCreateResponse = true;
+  await assert.rejects(
+    () => processPlaneExport(uncertainIntake.id),
+    /HTTP 503/,
+  );
+  const acceptedIntake = [...remoteIssues.values()].find((issue) =>
+    issue.description_html.includes(
+      `Faster Fixes reference: ${uncertainIntake.id}`,
+    ),
+  )!;
+  assert.ok(acceptedIntake.intakeId);
+  assert.equal(acceptedIntake.external_id, undefined);
+  assert.equal(
+    await prisma.feedbackPlaneIssueLink.findUnique({
+      where: { feedbackId: uncertainIntake.id },
+    }),
+    null,
+  );
+  await prisma.planeExport.update({
+    where: { feedbackId: uncertainIntake.id },
+    data: { status: "needs_attention" },
+  });
+  // A partial list must hydrate through Intake detail when work-item GET hides pending issues.
+  partialIntakeDetails = true;
+  await queuePlaneExport(uncertainIntake.id, true);
+  await processPlaneExport(uncertainIntake.id);
+  partialIntakeDetails = false;
+  const recoveredIntakeLink =
+    await prisma.feedbackPlaneIssueLink.findUniqueOrThrow({
+      where: { feedbackId: uncertainIntake.id },
+    });
+  assert.equal(recoveredIntakeLink.issueId, acceptedIntake.id);
+  assert.equal(recoveredIntakeLink.intakeId, acceptedIntake.intakeId);
+  assert.equal(
+    remoteIssues.size,
+    countBeforeUncertainIntake + 1,
+    "Description correlation must recover an uncertain Intake without another creation.",
+  );
+  assert.equal(acceptedIntake.external_id, uncertainIntake.id);
+  assert.equal(acceptedIntake.type_id, typeId);
+  assert.deepEqual(acceptedIntake.assignees, [reviewerUserId]);
+  assert.equal(acceptedIntake.state, "triage");
+  assert.equal(references.get(acceptedIntake.id), uncertainIntake.id);
+  assert.equal(
+    [...attachments.values()].filter(
+      (asset) => asset.issueId === acceptedIntake.id && asset.is_uploaded,
+    ).length,
+    2,
+  );
+  assert.equal(
+    (
+      await prisma.planeExport.findUniqueOrThrow({
+        where: { feedbackId: uncertainIntake.id },
+      })
+    ).status,
+    "complete",
   );
 
   await prisma.projectPlaneLink.update({
@@ -643,7 +762,8 @@ async function main() {
       passed: [
         "manual gating",
         "selected state",
-        "Intake create/patch ordering",
+        "Cloud Intake UUID + issue_detail create/patch ordering",
+        "uncertain Intake recovery by description with partial-detail hydration",
         "email and generic assignment",
         "custom field references",
         "image and Markdown multipart uploads",

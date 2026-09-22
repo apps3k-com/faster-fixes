@@ -420,7 +420,38 @@ export function getPlaneCommentWebhookTarget(payload: unknown) {
 }
 
 export async function handlePlaneCommentWebhook(payload: unknown) {
-  const target = getPlaneCommentWebhookTarget(payload);
+  let target = getPlaneCommentWebhookTarget(payload);
+  const envelope = getRecord(payload);
+  if (
+    !target &&
+    envelope.event === "workitem.comment.deleted" &&
+    envelope.entity_type === "issue_comment" &&
+    typeof envelope.entity_id === "string" &&
+    typeof envelope.workspace_id === "string"
+  ) {
+    // Legacy deletions contain only the comment ID; recover its issue from an existing workspace-scoped mapping.
+    const comment = await prisma.feedbackDiscussionComment.findFirst({
+      where: {
+        remoteCommentId: envelope.entity_id,
+        feedback: {
+          planeIssueLink: {
+            projectPlaneLink: {
+              planeInstallation: { workspaceId: envelope.workspace_id },
+            },
+          },
+        },
+      },
+      select: {
+        feedback: { select: { planeIssueLink: { select: { issueId: true } } } },
+      },
+    });
+    if (comment?.feedback.planeIssueLink)
+      target = {
+        issueId: comment.feedback.planeIssueLink.issueId,
+        workspaceId: envelope.workspace_id,
+        projectId: undefined,
+      };
+  }
   if (!target) return;
   // V2 comment events can omit the project. The stored link supplies it when
   // reconciling; only links in the signed event's workspace are candidates.

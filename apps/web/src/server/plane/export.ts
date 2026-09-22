@@ -87,7 +87,40 @@ type PlaneIssue = {
   archived_at?: string | null;
   deleted_at?: string | null;
 };
-type Intake = { id: string; issue: PlaneIssue };
+type Intake = {
+  id: string;
+  issue: string | PlaneIssue;
+  issue_detail?: Partial<PlaneIssue> | null;
+};
+
+function intakeIssue(intake: Intake): PlaneIssue {
+  // Cloud returns a foreign-key UUID plus issue_detail; the API reference also documents an expanded issue.
+  return typeof intake.issue === "string"
+    ? { ...intake.issue_detail, id: intake.issue }
+    : intake.issue;
+}
+
+async function hydrateIntakeIssue(
+  client: PlaneClient,
+  projectPath: string,
+  intake: Intake,
+): Promise<PlaneIssue> {
+  const issue = intakeIssue(intake);
+  if (issue.description_html !== undefined && issue.sequence_id && issue.state)
+    return issue;
+  try {
+    return await client.request<PlaneIssue>(
+      `${projectPath}/work-items/${issue.id}/`,
+    );
+  } catch (error) {
+    if (!(error instanceof PlaneApiError) || error.status !== 404) throw error;
+    // Pending Intake items are hidden by the ordinary work-item detail endpoint.
+    const detail = await client.request<Intake>(
+      `${projectPath}/intake-issues/${issue.id}/`,
+    );
+    return intakeIssue(detail);
+  }
+}
 type Attachment = {
   id: string;
   external_id?: string;
@@ -233,20 +266,28 @@ export async function processPlaneExport(feedbackId: string) {
           item.external_id === feedbackId &&
           item.external_source === "faster-fixes",
       );
-      if (!issue && link.exportMode === "intake") {
+      if (!issue && link.exportMode === "intake" && job.createAttemptedAt) {
         const intakes = await client.list<Intake>(
           `${projectPath}/intake-issues/`,
         );
-        const found = intakes.find(
-          (item) =>
-            (item.issue?.external_id === feedbackId &&
-              item.issue.external_source === "faster-fixes") ||
-            item.issue?.description_html?.includes(
+        for (const intake of intakes) {
+          const candidate = await hydrateIntakeIssue(
+            client,
+            projectPath,
+            intake,
+          );
+          if (
+            (candidate.external_id === feedbackId &&
+              candidate.external_source === "faster-fixes") ||
+            candidate.description_html?.includes(
               `Faster Fixes reference: ${feedbackId}`,
-            ),
-        );
-        issue = found?.issue;
-        intakeId = found?.id;
+            )
+          ) {
+            issue = candidate;
+            intakeId = intake.id;
+            break;
+          }
+        }
       }
       if (!issue && job.createAttemptedAt) {
         await prisma.planeExport.update({
@@ -316,7 +357,7 @@ export async function processPlaneExport(feedbackId: string) {
               "POST",
               { issue: body },
             );
-            issue = result.issue;
+            issue = intakeIssue(result);
             intakeId = result.id;
           } else
             issue = await client.request<PlaneIssue>(
@@ -339,6 +380,11 @@ export async function processPlaneExport(feedbackId: string) {
         }
       }
       if (!issue?.id) throw new Error("Plane did not return a work item ID.");
+      if (intakeId)
+        issue = await hydrateIntakeIssue(client, projectPath, {
+          id: intakeId,
+          issue,
+        });
       remoteLink = await prisma.feedbackPlaneIssueLink.create({
         data: {
           feedbackId,
@@ -348,7 +394,7 @@ export async function processPlaneExport(feedbackId: string) {
           issueIdentifier: issue.sequence_id
             ? `${link.planeProjectIdentifier}-${issue.sequence_id}`
             : issue.id,
-          issueUrl: `https://app.plane.so/${encodeURIComponent(link.planeInstallation.workspaceSlug)}/projects/${link.planeProjectId}/issues/${issue.id}`,
+          issueUrl: `https://app.plane.so/${encodeURIComponent(link.planeInstallation.workspaceSlug)}/projects/${link.planeProjectId}/${intakeId ? `intake/?currentTab=open&inboxIssueId=${issue.id}` : `issues/${issue.id}`}`,
           issueStateId:
             typeof issue.state === "string" ? issue.state : issue.state?.id,
         },
@@ -373,12 +419,18 @@ export async function processPlaneExport(feedbackId: string) {
             ? candidates[0]!.id
             : link.genericAssigneeId;
         // Intake creation only persists title and description; assign and correlate the underlying work item afterwards.
-        await client.request(`${issuePath}/`, "PATCH", {
-          external_source: "faster-fixes",
-          external_id: feedbackId,
-          assignees: [assignee],
-          ...(link.workItemTypeId ? { type_id: link.workItemTypeId } : {}),
-        });
+        await client.request(
+          `${projectPath}/intake-issues/${remoteLink.issueId}/`,
+          "PATCH",
+          {
+            issue: {
+              external_source: "faster-fixes",
+              external_id: feedbackId,
+              assignees: [assignee],
+              ...(link.workItemTypeId ? { type_id: link.workItemTypeId } : {}),
+            },
+          },
+        );
       }
       if (!link.customFieldId)
         throw new Error(

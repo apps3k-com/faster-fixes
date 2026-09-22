@@ -49,8 +49,10 @@ The infrastructure owner supplies these variables in the runtime secret store or
 The exact requested scopes live in `server/plane/client.ts`. Grant read access to
 projects, their features/members/states/types/properties and workspace members;
 grant read/write access to Intake, work items, property values, attachments and
-comments. Configure v2 work-item and comment events. Test the actual app scopes
-and webhook signature in the target Cloud workspace before enabling automation.
+comments. OAuth app webhooks use `issue`/`issue_comment` events with an action;
+workspace v2 webhooks use `workitem.*` events. Both signed formats are supported.
+Test the actual app scopes and webhook signature in the target Cloud workspace
+before enabling automation.
 
 Keep the encryption key stable across upgrades. Changing it without re-encrypting
 stored tokens and pending upload credentials prevents their decryption.
@@ -83,8 +85,10 @@ errors. Retry resumes the operation. An uncertain creation is reconciled by
 external correlation before any further creation; if no unique outcome can be
 proven, investigate in Plane rather than creating a duplicate blindly.
 
-Webhook signatures are checked against raw request bytes. Durable events use the
-stable v2 `event_id`, not the per-delivery UUID. Acknowledge only after storage.
+Webhook signatures are checked against raw request bytes before normalization.
+Durable events use the stable v2 `event_id`, or a SHA-256 hash of the signed raw
+body for legacy app events, never the unsigned per-delivery UUID. Acknowledge
+supported events only after storage; unrelated signed events are ignored.
 Disconnecting pauses synchronization and retains all mappings; reconnect to the
 same workspace to resume. Do not repoint an existing linked feedback history at a
 different Plane project.
@@ -130,6 +134,15 @@ to a loopback database named `ff_plane_e2e`. Its credentials are deliberately lo
 test values. Never use that account or fixture in a deployed environment. Record
 local FF/database checks separately from actual Plane Cloud E2E evidence.
 
+Run the focused webhook compatibility harness from the repository root:
+
+```sh
+npx --yes pnpm@10.4.1 --filter @workspace/db exec tsx --tsconfig ../../apps/web/tsconfig.json ../../apps/web/scripts/plane-webhook-compatibility.ts
+```
+
+It exercises the real route and normalization with mocked persistence and event
+delivery. It is not proof of live Plane webhook delivery.
+
 ## Verification record — 2026-09-22
 
 - Passed: repository typecheck, Prisma generation and additive migrations against
@@ -154,22 +167,38 @@ local FF/database checks separately from actual Plane Cloud E2E evidence.
 - Passed with the actual React widget against deployed FF: reviewer creation,
   feedback submission, screenshot upload and diagnostic capture. Test feedback:
   `c5422aca-bccf-4bcc-bf04-87414bebc979`.
-- The manual export was durably queued. Inngest app registration returned
-  `Successfully registered` with `modified: true`; a subsequent test event was
-  accepted. The running export then reported Plane HTTP 404. Read-only Cloud
-  probes isolated the cause: an external-ID lookup returns 404 for no match and
-  a single work item for a match, rather than the ordinary list shape. The
-  corrected lookup still needs deployed acceptance. Live issue creation,
-  attachments, webhook/status/comment sync and invitations remain unverified.
+- PR #8 deployed as `91c449f`. Manual feedback above resumed as `FFTEST-1` with
+  the exact FF UUID in its custom property and the connector bot as assignee.
+  Plane API confirms uploaded PNG (761,680 bytes) and Markdown (330 bytes).
+  The screenshot rendered in Plane. Chrome blocked the Markdown download, so
+  its downloaded content was not independently inspected.
+- Automatic state export passed with the actual widget: feedback
+  `5b754931-0f7d-4bf1-8eb2-2dbb8f81ae31` became `FFTEST-2` in Todo, assigned to
+  the matching reviewer email's Plane member, with both attachments and FF ID.
+- FF comment creation and editing appeared in Plane. A Plane-origin comment
+  appeared read-only in FF through scheduled reconciliation. The webhook inbox
+  remained empty; immediate inbound webhook delivery is not yet verified.
+- Intake feedback `e6bc354c-622d-4dfb-8292-a7ceb4d36fd1` created pending
+  `FFTEST-3`, but export stopped safely as `needs_attention` because the deployed
+  code expected a nested issue instead of Plane's issue UUID plus `issue_detail`.
+  No duplicate was created. The follow-up adapter accepts both response shapes,
+  recovers uncertain creation by its FF reference, and updates pending metadata
+  through the Intake endpoint without accepting the item. Its isolated database
+  harness passes; pending custom-property writes still need Cloud acceptance.
+- Plane In Progress mapped to FF In Progress through scheduled reconciliation
+  at approximately 16:20 UTC. Intake completion, immediate webhook delivery,
+  the Done transition and invitation delivery remain open acceptance gates.
 - The late-screenshot regression passed against isolated PostgreSQL with mocked
   Plane/storage: completed and in-flight exports resume without duplicate issues
-  or diagnostics; unrequested manual exports remain unqueued. This fix still
-  needs deployed widget acceptance. Do not treat mocked checks as Cloud acceptance.
+  or diagnostics; unrequested manual exports remain unqueued. The automatic
+  widget export above also completed both attachment stages after deployment.
+  Do not treat mocked checks as Cloud acceptance.
 
 ## Sources
 
 - [OAuth bot flow](https://developers.plane.so/dev-tools/build-plane-app/choose-token-flow)
 - [Webhook v2 contract](https://developers.plane.so/dev-tools/intro-webhooks)
+- [OAuth app webhook contract](https://developers.plane.so/dev-tools/build-plane-app/webhooks)
 - [Inngest self-hosting and sync polling](https://www.inngest.com/docs/self-hosting)
 - [Attachment upload](https://developers.plane.so/api-reference/issue-attachments/overview)
 - [Planning project](https://app.plane.so/apps3k/projects/e1138ec3-3f29-4c1a-89db-5700fa976152/issues), FFA3K-1 through FFA3K-10

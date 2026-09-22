@@ -191,8 +191,10 @@ delivery. It is not proof of live Plane webhook delivery.
   Plane comment also appeared read-only in FF within ten seconds. This is live
   acceptance of the signed OAuth app webhook path, status mappings and inbound
   comment synchronization; it is not merely scheduled reconciliation.
-- Invitation delivery remains the only unexercised live acceptance gate because
-  no recipient has been authorized for a real invitation.
+- Plane Guest `chiefbot@agent.apps3k.com` was invited through the connected
+  integration and appears in Faster Fixes as a pending Member invitation. The
+  recipient must accept it before becoming active; creation and delivery of the
+  invitation are live-verified.
 - The late-screenshot regression passed against isolated PostgreSQL with mocked
   Plane/storage: completed and in-flight exports resume without duplicate issues
   or diagnostics; unrequested manual exports remain unqueued. The automatic

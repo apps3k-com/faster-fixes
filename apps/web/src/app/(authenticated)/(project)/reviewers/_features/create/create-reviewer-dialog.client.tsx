@@ -44,7 +44,7 @@ export function CreateReviewerDialog({
 
   const form = useForm<CreateReviewerInputs>({
     resolver: zodResolver(CreateReviewerSchema),
-    defaultValues: { projectId, name: "" },
+    defaultValues: { projectId, name: "", email: "" },
   });
 
   const createReviewer = useMutation(
@@ -102,6 +102,24 @@ export function CreateReviewerDialog({
                   <FormControl>
                     <Input
                       placeholder="Marie - CEO"
+                      disabled={createReviewer.isPending}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email (optional)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="email"
+                      placeholder="reviewer@example.com"
                       disabled={createReviewer.isPending}
                       {...field}
                     />

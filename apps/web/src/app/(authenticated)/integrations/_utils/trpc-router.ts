@@ -13,6 +13,10 @@ import { disconnectLinear } from "../_features/linear/disconnect-linear.trpc.mut
 import { getLinearInstallation } from "../_features/linear/get-linear-installation.trpc.query";
 import { disconnectSlack } from "../_features/slack/disconnect-slack.trpc.mutation";
 import { getSlackInstallation } from "../_features/slack/get-slack-installation.trpc.query";
+import { disconnectPlane } from "../_features/plane/disconnect-plane.trpc.mutation";
+import { getPlaneInstallation } from "../_features/plane/get-plane-installation.trpc.query";
+import { getPlaneMembers } from "../_features/plane/get-plane-members.trpc.query";
+import { invitePlaneMember } from "../_features/plane/invite-plane-member.trpc.mutation";
 
 export const integrationsRouter = router({
   agentToken: router({
@@ -38,5 +42,11 @@ export const integrationsRouter = router({
   slack: router({
     getInstallation: getSlackInstallation,
     disconnect: disconnectSlack,
+  }),
+  plane: router({
+    getInstallation: getPlaneInstallation,
+    listMembers: getPlaneMembers,
+    inviteMember: invitePlaneMember,
+    disconnect: disconnectPlane,
   }),
 });

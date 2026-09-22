@@ -6,6 +6,7 @@ export const CreateProjectSchema = z.object({
   organizationId: z.string(),
   name: z.string().trim().min(1, "Name is required"),
   domain: DomainSchema,
+  planeProjectId: z.string().optional(),
 });
 
 export type CreateProjectInputs = z.infer<typeof CreateProjectSchema>;

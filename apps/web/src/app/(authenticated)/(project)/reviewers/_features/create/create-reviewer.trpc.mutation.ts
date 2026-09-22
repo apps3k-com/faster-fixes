@@ -37,6 +37,7 @@ export const createReviewer = protectedProcedure
       data: {
         projectId: input.projectId,
         name: input.name,
+        email: input.email || null,
         token: tokenHash,
       },
     });

@@ -1,0 +1,141 @@
+model PlaneInstallation {
+  id String @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organizationId String @unique
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  appInstallationId String @unique
+  workspaceId String @unique
+  workspaceSlug String
+  workspaceName String
+  botUserId String
+  accessToken String
+  tokenExpiresAt DateTime
+  healthState String @default("connected")
+  installedById String?
+  installedBy Member? @relation(fields: [installedById], references: [id], onDelete: SetNull)
+  projectLinks ProjectPlaneLink[]
+  @@map("plane_installation")
+}
+
+model PlaneOAuthState {
+  id String @id
+  organizationId String
+  userId String
+  expiresAt DateTime
+  @@map("plane_oauth_state")
+}
+
+model ProjectPlaneLink {
+  id String @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  projectId String @unique
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  planeInstallationId String
+  planeInstallation PlaneInstallation @relation(fields: [planeInstallationId], references: [id], onDelete: Restrict)
+  planeProjectId String
+  planeProjectName String
+  planeProjectIdentifier String
+  enabled Boolean @default(true)
+  exportMode String @default("manual")
+  defaultStateId String?
+  workItemTypeId String?
+  customFieldId String?
+  assignmentMode String @default("generic")
+  genericAssigneeId String
+  inProgressStateIds String[] @default([])
+  doneStateIds String[] @default([])
+  commentsEnabled Boolean @default(false)
+  commentsEnabledAt DateTime?
+  linkHealthIssue String?
+  feedbackIssueLinks FeedbackPlaneIssueLink[]
+  exports PlaneExport[]
+  @@index([planeInstallationId, planeProjectId])
+  @@map("project_plane_link")
+}
+
+model FeedbackPlaneIssueLink {
+  id String @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  feedbackId String @unique
+  feedback Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  projectPlaneLinkId String
+  projectPlaneLink ProjectPlaneLink @relation(fields: [projectPlaneLinkId], references: [id], onDelete: Restrict)
+  issueId String
+  intakeId String?
+  issueIdentifier String
+  issueUrl String
+  issueStateId String?
+  lastSyncAt DateTime?
+  lastSyncSource String?
+  commentSyncLockedUntil DateTime?
+  @@unique([projectPlaneLinkId, issueId])
+  @@map("feedback_plane_issue_link")
+}
+
+model PlaneExport {
+  id String @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  feedbackId String @unique
+  feedback Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  projectPlaneLinkId String
+  projectPlaneLink ProjectPlaneLink @relation(fields: [projectPlaneLinkId], references: [id], onDelete: Restrict)
+  status String @default("pending")
+  attempts Int @default(0)
+  lockedUntil DateTime?
+  nextAttemptAt DateTime @default(now())
+  createAttemptedAt DateTime?
+  referenceWritten Boolean @default(false)
+  screenshotAttachmentId String?
+  screenshotUploadData String?
+  screenshotStatus String @default("pending")
+  diagnosticsAttachmentId String?
+  diagnosticsUploadData String?
+  diagnosticsStatus String @default("pending")
+  assignmentNote String?
+  lastError String?
+  @@index([status, nextAttemptAt])
+  @@map("plane_export")
+}
+
+model PlaneWebhookEvent {
+  id String @id
+  createdAt DateTime @default(now())
+  workspaceId String
+  event String
+  payload Json
+  processedAt DateTime?
+  lastError String?
+  @@index([processedAt, createdAt])
+  @@map("plane_webhook_event")
+}
+
+enum DiscussionCommentOrigin {
+  FF
+  PLANE
+}
+
+model FeedbackDiscussionComment {
+  id String @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  feedbackId String
+  feedback Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  authorUserId String?
+  authorName String
+  body String @db.Text
+  origin DiscussionCommentOrigin @default(FF)
+  remoteCommentId String?
+  remoteUpdatedAt DateTime?
+  deletedAt DateTime?
+  syncStatus String @default("pending")
+  syncError String?
+  lastSyncedAt DateTime?
+  @@unique([feedbackId, remoteCommentId])
+  @@index([feedbackId, createdAt])
+  @@index([syncStatus])
+  @@map("feedback_discussion_comment")
+}

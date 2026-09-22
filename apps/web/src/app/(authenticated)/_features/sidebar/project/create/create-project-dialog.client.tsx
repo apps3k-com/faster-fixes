@@ -4,7 +4,7 @@ import { useActiveProject } from "@/app/_features/project/active-project-provide
 import { useActiveOrganization } from "@/lib/auth";
 import { useTRPC } from "@/lib/trpc/trpc-client";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@workspace/ui/components/button";
 import {
   Dialog,
@@ -24,6 +24,13 @@ import {
   FormMessage,
 } from "@workspace/ui/components/form";
 import { Input } from "@workspace/ui/components/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select";
 import { Check, Copy, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -43,6 +50,11 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
   const queryClient = useQueryClient();
   const { data: activeOrg } = useActiveOrganization();
   const { setActiveProject } = useActiveProject();
+  const planeProjectsQuery = useQuery(
+    trpc.authenticated.projects.plane.listProjects.queryOptions(undefined, {
+      enabled: !!activeOrg?.id,
+    }),
+  );
 
   const [open, setOpen] = React.useState(false);
   const [createdProjectId, setCreatedProjectId] = React.useState<string | null>(
@@ -56,6 +68,7 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
       organizationId: activeOrg?.id ?? "",
       name: "",
       domain: "",
+      planeProjectId: undefined,
     },
   });
 
@@ -156,6 +169,39 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
                   </FormItem>
                 )}
               />
+
+              {planeProjectsQuery.data?.length ? (
+                <FormField
+                  control={form.control}
+                  name="planeProjectId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Plane project (optional)</FormLabel>
+                      <Select
+                        value={field.value ?? "none"}
+                        onValueChange={(value) =>
+                          field.onChange(value === "none" ? undefined : value)
+                        }
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Link later" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Link later</SelectItem>
+                          {planeProjectsQuery.data.map((project) => (
+                            <SelectItem key={project.id} value={project.id}>
+                              {project.identifier} · {project.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : null}
 
               <FormField
                 control={form.control}

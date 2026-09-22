@@ -17,6 +17,15 @@ import { syncJiraIssueStatus } from "@/server/inngest/sync-jira-issue-status";
 import { syncLinearIssueStatus } from "@/server/inngest/sync-linear-issue-status";
 import { updateSlackFeedbackMessage } from "@/server/inngest/update-slack-feedback-message";
 import { serve } from "inngest/next";
+import {
+  syncPlaneDiscussion,
+  reconcilePlaneDiscussions,
+} from "@/server/inngest/sync-plane-discussions";
+import {
+  exportPlaneFeedback,
+  receivePlaneWebhook,
+  sweepPlaneSync,
+} from "@/server/inngest/sync-plane";
 
 // Required by v4 checkpointing: client maxRuntime ("50s") must sit below this.
 export const maxDuration = 60;
@@ -24,6 +33,11 @@ export const maxDuration = 60;
 export const { GET, POST, PUT } = serve({
   client: inngest,
   functions: [
+    syncPlaneDiscussion,
+    reconcilePlaneDiscussions,
+    exportPlaneFeedback,
+    receivePlaneWebhook,
+    sweepPlaneSync,
     createGitHubIssue,
     syncGitHubIssueStatus,
     syncFeedbackStatusToGitHub,

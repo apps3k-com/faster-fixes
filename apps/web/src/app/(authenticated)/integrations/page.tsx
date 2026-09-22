@@ -3,6 +3,8 @@ import { JiraIcon } from "@workspace/ui/components/icons/jira-icon";
 import { LinearIcon } from "@workspace/ui/components/icons/linear-icon";
 import { McpIcon } from "@workspace/ui/components/icons/mcp-icon";
 import { SlackIcon } from "@workspace/ui/components/icons/slack-icon";
+import { Cloud } from "lucide-react";
+import Link from "next/link";
 import { DashboardSection } from "@/app/(authenticated)/_features/dashboard/dashboard-section";
 import { DashboardPageContent } from "@/app/_features/core/dashboard/dashboard-page-content";
 import { AgentTokensSection } from "./_features/agent-tokens/agent-tokens-section.client";
@@ -10,11 +12,26 @@ import { GitHubIntegrationSection } from "./_features/github/github-integration-
 import { JiraIntegrationSection } from "./_features/jira/jira-integration-section.client";
 import { LinearIntegrationSection } from "./_features/linear/linear-integration-section.client";
 import { SlackIntegrationSection } from "./_features/slack/slack-integration-section.client";
+import { PlaneIntegrationSection } from "./_features/plane/plane-integration-section.client";
 
 export default function IntegrationsPage() {
   return (
     <DashboardPageContent breadcrumbs={[{ label: "Integrations" }]}>
       <div className="flex flex-col gap-12">
+        <DashboardSection
+          title={
+            <span className="flex items-center gap-2.5">
+              <Cloud className="size-6 shrink-0" />
+              Plane
+            </span>
+          }
+          description="Connect Plane Cloud to mirror feedback into Plane work items."
+          cardTitle="Plane integration"
+          cardClassName="lg:max-w-lg"
+        >
+          <PlaneIntegrationSection />
+        </DashboardSection>
+
         <DashboardSection
           title={
             <span className="flex items-center gap-2.5">
@@ -81,12 +98,12 @@ export default function IntegrationsPage() {
           description={
             <>
               API tokens for authenticating the Faster Fixes MCP server.{" "}
-              <a
+              <Link
                 href="/docs/mcp/setup"
-                className="text-primary underline underline-offset-4 hover:text-primary/80"
+                className="text-primary hover:text-primary/80 underline underline-offset-4"
               >
                 Setup guide
-              </a>
+              </Link>
             </>
           }
           cardTitle="MCP Server"

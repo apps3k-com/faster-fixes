@@ -19,6 +19,7 @@ model Project {
   linearLink   ProjectLinearLink?
   jiraLink     ProjectJiraLink?
   slackLink    ProjectSlackLink?
+  planeLink    ProjectPlaneLink?
 
   @@index([organizationId])
   @@index([publicId])
@@ -47,6 +48,7 @@ model Reviewer {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   name     String
+  email    String?
   token    String  @unique
   isActive Boolean @default(true)
 
@@ -97,6 +99,9 @@ model Feedback {
   linearIssueLink FeedbackLinearIssueLink?
   jiraIssueLink   FeedbackJiraIssueLink?
   slackMessage    FeedbackSlackMessage?
+  planeIssueLink  FeedbackPlaneIssueLink?
+  planeExport     PlaneExport?
+  discussionComments FeedbackDiscussionComment[]
 
   @@index([projectId])
   @@index([reviewerId])

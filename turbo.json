@@ -1,6 +1,13 @@
 {
   "$schema": "https://turborepo.dev/schema.v2.json",
   "ui": "tui",
+  "globalEnv": [
+    "PLANE_ENABLED",
+    "PLANE_CLIENT_ID",
+    "PLANE_CLIENT_SECRET",
+    "PLANE_TOKEN_ENCRYPTION_KEY",
+    "PLANE_WEBHOOK_SECRET"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

@@ -22,6 +22,7 @@ model Organization {
   linearInstallation  LinearInstallation?
   jiraInstallation    JiraInstallation?
   slackInstallation   SlackInstallation?
+  planeInstallation   PlaneInstallation?
 
   @@unique([slug])
   @@map("organization")
@@ -43,6 +44,7 @@ model Member {
   linearInstallationsInstalled LinearInstallation[]
   jiraInstallationsInstalled   JiraInstallation[]
   slackInstallations           SlackInstallation[]
+  planeInstallations           PlaneInstallation[]
 
   @@index([organizationId])
   @@index([userId])

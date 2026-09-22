@@ -193,8 +193,8 @@ delivery. It is not proof of live Plane webhook delivery.
   comment synchronization; it is not merely scheduled reconciliation.
 - Plane Guest `chiefbot@agent.apps3k.com` was invited through the connected
   integration and appears in Faster Fixes as a pending Member invitation. The
-  recipient must accept it before becoming active; creation and delivery of the
-  invitation are live-verified.
+  recipient must accept it before becoming active. Creation is live-verified;
+  delivery is blocked until Resend verifies the `ff.apps3k.com` sender domain.
 - The late-screenshot regression passed against isolated PostgreSQL with mocked
   Plane/storage: completed and in-flight exports resume without duplicate issues
   or diagnostics; unrequested manual exports remain unqueued. The automatic

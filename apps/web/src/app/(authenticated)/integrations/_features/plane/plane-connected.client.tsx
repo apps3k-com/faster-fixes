@@ -38,7 +38,7 @@ export function PlaneConnected({ installation }: PlaneConnectedProps) {
     trpc.authenticated.integrations.plane.inviteMember.mutationOptions({
       onSuccess: () => {
         setMemberEmail("");
-        toast.success("Invitation sent.");
+        toast.success("Invitation created.");
       },
       onError: (error) => toast.error(error.message),
     }),

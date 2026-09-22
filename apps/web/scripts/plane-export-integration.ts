@@ -27,7 +27,7 @@ storageModule.exports = {
     "https://fixture.backblazeb2.com/screenshot.png",
 };
 require.cache[storagePath] = storageModule;
-const { queuePlaneExport, processPlaneExport } =
+const { queuePlaneExport, processPlaneExport, resumePlaneScreenshotExport } =
   require("../src/server/plane/export.ts") as typeof import("../src/server/plane/export");
 const { processPlaneWebhook } =
   require("../src/server/plane/sync.ts") as typeof import("../src/server/plane/sync");
@@ -73,6 +73,7 @@ const png = Buffer.from(
 );
 const actualFetch = globalThis.fetch;
 let failNextReference = false;
+let duringDiagnosticUpload: (() => Promise<void>) | null = null;
 
 function response(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -105,7 +106,14 @@ globalThis.fetch = async (input, init) => {
     assert.ok(file instanceof Blob);
     assert.equal(file.type, asset.type);
     asset.bytes = new Uint8Array(await file.arrayBuffer());
-    if (asset.type === "text/markdown") asset.text = await file.text();
+    if (asset.type === "text/markdown") {
+      asset.text = await file.text();
+      if (duringDiagnosticUpload) {
+        const callback = duringDiagnosticUpload;
+        duringDiagnosticUpload = null;
+        await callback();
+      }
+    }
     return new Response(null, { status: 204 });
   }
   assert.equal(
@@ -470,6 +478,102 @@ async function main() {
       "Processed webhook replay must not repeat API work.",
     );
   }
+  // The React widget attaches images after creating feedback, including after an export has finished.
+  const attachLateScreenshot = (feedbackId: string) =>
+    prisma.$transaction(async (tx) => {
+      await tx.feedback.update({
+        where: { id: feedbackId },
+        data: { screenshotId: screenshot.id },
+      });
+      return resumePlaneScreenshotExport(feedbackId, tx);
+    });
+  const issueCountBeforeLateImage = remoteIssues.size;
+  const diagnosticsCount = [...attachments.values()].filter(
+    (asset) => asset.type === "text/markdown",
+  ).length;
+  assert.equal((await attachLateScreenshot(stateFeedback.id)).count, 1);
+  assert.equal(
+    (
+      await prisma.planeExport.findUniqueOrThrow({
+        where: { feedbackId: stateFeedback.id },
+      })
+    ).status,
+    "pending",
+  );
+  await processPlaneExport(stateFeedback.id);
+  const resumed = await prisma.planeExport.findUniqueOrThrow({
+    where: { feedbackId: stateFeedback.id },
+  });
+  assert.equal(resumed.status, "complete");
+  assert.equal(resumed.screenshotStatus, "complete");
+  assert.equal(remoteIssues.size, issueCountBeforeLateImage);
+  assert.equal(
+    [...attachments.values()].filter((asset) => asset.type === "text/markdown")
+      .length,
+    diagnosticsCount,
+  );
+  assert.equal(
+    [...attachments.values()].filter(
+      (asset) =>
+        asset.issueId === stateLink.issueId && asset.type === "image/png",
+    ).length,
+    1,
+  );
+
+  await prisma.projectPlaneLink.update({
+    where: { id: config.id },
+    data: { exportMode: "state" },
+  });
+  const inFlight = await newFeedback("Screenshot arrives during export");
+  await queuePlaneExport(inFlight.id);
+  duringDiagnosticUpload = async () => {
+    await attachLateScreenshot(inFlight.id);
+    await processPlaneExport(inFlight.id);
+  };
+  await processPlaneExport(inFlight.id);
+  assert.equal(
+    (
+      await prisma.planeExport.findUniqueOrThrow({
+        where: { feedbackId: inFlight.id },
+      })
+    ).status,
+    "pending",
+    "An active export must preserve a screenshot retry arriving during its final stage.",
+  );
+  const countAfterInFlight = remoteIssues.size;
+  await processPlaneExport(inFlight.id);
+  assert.equal(remoteIssues.size, countAfterInFlight);
+  const inFlightJob = await prisma.planeExport.findUniqueOrThrow({
+    where: { feedbackId: inFlight.id },
+  });
+  assert.equal(inFlightJob.status, "complete");
+  assert.equal(inFlightJob.screenshotStatus, "complete");
+  const inFlightLink = await prisma.feedbackPlaneIssueLink.findUniqueOrThrow({
+    where: { feedbackId: inFlight.id },
+  });
+  assert.equal(
+    [...attachments.values()].filter(
+      (asset) => asset.issueId === inFlightLink.issueId,
+    ).length,
+    2,
+    "Resuming must not duplicate diagnostics or the image.",
+  );
+
+  await prisma.projectPlaneLink.update({
+    where: { id: config.id },
+    data: { exportMode: "manual" },
+  });
+  const untouchedManual = await newFeedback("Unexported manual feedback");
+  assert.equal(await queuePlaneExport(untouchedManual.id), null);
+  assert.equal((await attachLateScreenshot(untouchedManual.id)).count, 0);
+  assert.equal(
+    await prisma.planeExport.findUnique({
+      where: { feedbackId: untouchedManual.id },
+    }),
+    null,
+    "Attaching a screenshot must not start a manual export.",
+  );
+
   console.log(
     JSON.stringify({
       evidence:
@@ -484,6 +588,7 @@ async function main() {
         "partial and complete export retry deduplication",
         "missing-field preflight",
         "durable webhook status processing and deduplication",
+        "late screenshots resume complete/in-flight exports without duplicate issues or diagnostics; manual mode preserved",
       ],
       issueCount: remoteIssues.size,
       attachmentCount: attachments.size,

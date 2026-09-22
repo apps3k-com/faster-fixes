@@ -27,7 +27,7 @@ storageModule.exports = {
     "https://fixture.backblazeb2.com/screenshot.png",
 };
 require.cache[storagePath] = storageModule;
-const { queuePlaneExport, processPlaneExport } =
+const { queuePlaneExport, processPlaneExport, resumePlaneScreenshotExport } =
   require("../src/server/plane/export.ts") as typeof import("../src/server/plane/export");
 const { processPlaneWebhook } =
   require("../src/server/plane/sync.ts") as typeof import("../src/server/plane/sync");
@@ -73,6 +73,9 @@ const png = Buffer.from(
 );
 const actualFetch = globalThis.fetch;
 let failNextReference = false;
+let loseNextCreateResponse = false;
+let denyProjectListing = false;
+let duringDiagnosticUpload: (() => Promise<void>) | null = null;
 
 function response(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -105,7 +108,14 @@ globalThis.fetch = async (input, init) => {
     assert.ok(file instanceof Blob);
     assert.equal(file.type, asset.type);
     asset.bytes = new Uint8Array(await file.arrayBuffer());
-    if (asset.type === "text/markdown") asset.text = await file.text();
+    if (asset.type === "text/markdown") {
+      asset.text = await file.text();
+      if (duringDiagnosticUpload) {
+        const callback = duringDiagnosticUpload;
+        duringDiagnosticUpload = null;
+        await callback();
+      }
+    }
     return new Response(null, { status: 204 });
   }
   assert.equal(
@@ -152,14 +162,25 @@ globalThis.fetch = async (input, init) => {
     return response({ id: issue.intakeId, issue }, 201);
   }
   if (path.endsWith("/work-items/")) {
-    if (method === "GET")
-      return page(
-        [...remoteIssues.values()].filter(
-          (issue) =>
-            issue.external_id === url.searchParams.get("external_id") &&
-            issue.external_source === url.searchParams.get("external_source"),
-        ),
+    if (method === "GET") {
+      if (!url.searchParams.has("external_id")) {
+        assert.equal(url.searchParams.get("per_page"), "1");
+        assert.equal(url.searchParams.has("cursor"), false);
+        if (denyProjectListing)
+          return response({ error: "Project not found" }, 404);
+        return response({
+          results: [...remoteIssues.values()].slice(0, 1),
+          next_page_results: true,
+          next_cursor: "must-not-follow",
+        });
+      }
+      const match = [...remoteIssues.values()].find(
+        (issue) =>
+          issue.external_id === url.searchParams.get("external_id") &&
+          issue.external_source === url.searchParams.get("external_source"),
       );
+      return match ? response(match) : response({ error: "Not found" }, 404);
+    }
     const issue: RemoteIssue = {
       ...body,
       id: randomUUID(),
@@ -169,6 +190,10 @@ globalThis.fetch = async (input, init) => {
       description_html: String(body.description_html),
     };
     remoteIssues.set(issue.id, issue);
+    if (loseNextCreateResponse) {
+      loseNextCreateResponse = false;
+      return response({ error: "Response lost after creation" }, 503);
+    }
     return response(issue, 201);
   }
   const issueId = path.match(/\/work-items\/([^/]+)\//)?.[1];
@@ -470,6 +495,147 @@ async function main() {
       "Processed webhook replay must not repeat API work.",
     );
   }
+  // The React widget attaches images after creating feedback, including after an export has finished.
+  const attachLateScreenshot = (feedbackId: string) =>
+    prisma.$transaction(async (tx) => {
+      await tx.feedback.update({
+        where: { id: feedbackId },
+        data: { screenshotId: screenshot.id },
+      });
+      return resumePlaneScreenshotExport(feedbackId, tx);
+    });
+  const issueCountBeforeLateImage = remoteIssues.size;
+  const diagnosticsCount = [...attachments.values()].filter(
+    (asset) => asset.type === "text/markdown",
+  ).length;
+  assert.equal((await attachLateScreenshot(stateFeedback.id)).count, 1);
+  assert.equal(
+    (
+      await prisma.planeExport.findUniqueOrThrow({
+        where: { feedbackId: stateFeedback.id },
+      })
+    ).status,
+    "pending",
+  );
+  await processPlaneExport(stateFeedback.id);
+  const resumed = await prisma.planeExport.findUniqueOrThrow({
+    where: { feedbackId: stateFeedback.id },
+  });
+  assert.equal(resumed.status, "complete");
+  assert.equal(resumed.screenshotStatus, "complete");
+  assert.equal(remoteIssues.size, issueCountBeforeLateImage);
+  assert.equal(
+    [...attachments.values()].filter((asset) => asset.type === "text/markdown")
+      .length,
+    diagnosticsCount,
+  );
+  assert.equal(
+    [...attachments.values()].filter(
+      (asset) =>
+        asset.issueId === stateLink.issueId && asset.type === "image/png",
+    ).length,
+    1,
+  );
+
+  await prisma.projectPlaneLink.update({
+    where: { id: config.id },
+    data: { exportMode: "state" },
+  });
+  const inFlight = await newFeedback("Screenshot arrives during export");
+  await queuePlaneExport(inFlight.id);
+  duringDiagnosticUpload = async () => {
+    await attachLateScreenshot(inFlight.id);
+    await processPlaneExport(inFlight.id);
+  };
+  await processPlaneExport(inFlight.id);
+  assert.equal(
+    (
+      await prisma.planeExport.findUniqueOrThrow({
+        where: { feedbackId: inFlight.id },
+      })
+    ).status,
+    "pending",
+    "An active export must preserve a screenshot retry arriving during its final stage.",
+  );
+  const countAfterInFlight = remoteIssues.size;
+  await processPlaneExport(inFlight.id);
+  assert.equal(remoteIssues.size, countAfterInFlight);
+  const inFlightJob = await prisma.planeExport.findUniqueOrThrow({
+    where: { feedbackId: inFlight.id },
+  });
+  assert.equal(inFlightJob.status, "complete");
+  assert.equal(inFlightJob.screenshotStatus, "complete");
+  const inFlightLink = await prisma.feedbackPlaneIssueLink.findUniqueOrThrow({
+    where: { feedbackId: inFlight.id },
+  });
+  assert.equal(
+    [...attachments.values()].filter(
+      (asset) => asset.issueId === inFlightLink.issueId,
+    ).length,
+    2,
+    "Resuming must not duplicate diagnostics or the image.",
+  );
+
+  await prisma.projectPlaneLink.update({
+    where: { id: config.id },
+    data: { exportMode: "manual" },
+  });
+  const untouchedManual = await newFeedback("Unexported manual feedback");
+  assert.equal(await queuePlaneExport(untouchedManual.id), null);
+  assert.equal((await attachLateScreenshot(untouchedManual.id)).count, 0);
+  assert.equal(
+    await prisma.planeExport.findUnique({
+      where: { feedbackId: untouchedManual.id },
+    }),
+    null,
+    "Attaching a screenshot must not start a manual export.",
+  );
+
+  const uncertain = await newFeedback("Created remotely, response lost");
+  await queuePlaneExport(uncertain.id, true);
+  const beforeUncertain = remoteIssues.size;
+  loseNextCreateResponse = true;
+  await assert.rejects(() => processPlaneExport(uncertain.id), /HTTP 503/);
+  assert.equal(remoteIssues.size, beforeUncertain + 1);
+  assert.equal(
+    await prisma.feedbackPlaneIssueLink.findUnique({
+      where: { feedbackId: uncertain.id },
+    }),
+    null,
+  );
+  await processPlaneExport(uncertain.id);
+  assert.equal(
+    remoteIssues.size,
+    beforeUncertain + 1,
+    "An exact external-ID lookup returns one object and must recover the existing issue.",
+  );
+  assert.equal(
+    (
+      await prisma.planeExport.findUniqueOrThrow({
+        where: { feedbackId: uncertain.id },
+      })
+    ).status,
+    "complete",
+  );
+
+  const inaccessible = await newFeedback("Project is inaccessible");
+  await queuePlaneExport(inaccessible.id, true);
+  const callsBeforeInaccessible = calls.length;
+  const issuesBeforeInaccessible = remoteIssues.size;
+  denyProjectListing = true;
+  await assert.rejects(() => processPlaneExport(inaccessible.id), /HTTP 404/);
+  denyProjectListing = false;
+  assert.equal(remoteIssues.size, issuesBeforeInaccessible);
+  assert.equal(calls.length - callsBeforeInaccessible, 2);
+  assert.equal(
+    (
+      await prisma.planeExport.findUniqueOrThrow({
+        where: { feedbackId: inaccessible.id },
+      })
+    ).createAttemptedAt,
+    null,
+  );
+
   console.log(
     JSON.stringify({
       evidence:
@@ -482,8 +648,11 @@ async function main() {
         "custom field references",
         "image and Markdown multipart uploads",
         "partial and complete export retry deduplication",
+        "external lookup 404 and singleton recovery after an uncertain creation",
+        "constant-size project access validation; inaccessible project fails before creation",
         "missing-field preflight",
         "durable webhook status processing and deduplication",
+        "late screenshots resume complete/in-flight exports without duplicate issues or diagnostics; manual mode preserved",
       ],
       issueCount: remoteIssues.size,
       attachmentCount: attachments.size,

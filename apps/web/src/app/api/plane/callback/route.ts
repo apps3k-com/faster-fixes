@@ -7,6 +7,9 @@ import {
   encryptPlaneToken,
   isPlaneEnabled,
   PlaneClient,
+  PlaneApiError,
+  PlaneOAuthConfigurationError,
+  PlaneTokenResponseError,
   requestBotToken,
 } from "@/server/plane/client";
 import { prisma } from "@workspace/db";
@@ -60,23 +63,48 @@ export async function GET(req: NextRequest) {
     data: { expiresAt: new Date(0) },
   });
   if (!consumed.count) return finish("error=plane_invalid_state");
+  let stage:
+    | "token_exchange"
+    | "installation_lookup"
+    | "encryption"
+    | "persistence" = "token_exchange";
   try {
     const token = await requestBotToken(installationId);
+    stage = "installation_lookup";
     const client = new PlaneClient(token.access_token, "");
-    const installations = await client.request<
-      {
-        id: string;
-        workspace: string;
-        workspace_detail: { name: string; slug: string };
-        app_bot: string;
-        status: string;
-      }[]
-    >(`/auth/o/app-installation/?id=${encodeURIComponent(installationId)}`);
-    const remote = installations.find(
-      (item) => item.id === installationId && item.status === "installed",
+    const installations = await client.request<unknown>(
+      `/auth/o/app-installation/?id=${encodeURIComponent(installationId)}`,
     );
-    if (!remote?.workspace || !remote.app_bot || !remote.workspace_detail?.slug)
-      return finish("error=plane_installation_unavailable");
+    if (!Array.isArray(installations)) {
+      return finish("error=plane_installation_lookup_invalid_response");
+    }
+    const remote = installations.find((item): item is Record<string, unknown> =>
+      Boolean(
+        item &&
+        typeof item === "object" &&
+        item.id === installationId &&
+        item.status === "installed",
+      ),
+    );
+    if (!remote) return finish("error=plane_installation_unavailable");
+    const workspace = remote.workspace_detail;
+    if (
+      typeof remote.workspace !== "string" ||
+      !remote.workspace ||
+      typeof remote.app_bot !== "string" ||
+      !remote.app_bot ||
+      !workspace ||
+      typeof workspace !== "object" ||
+      !("slug" in workspace) ||
+      typeof workspace.slug !== "string" ||
+      !workspace.slug ||
+      !("name" in workspace) ||
+      typeof workspace.name !== "string"
+    )
+      return finish("error=plane_installation_lookup_invalid_response");
+    stage = "encryption";
+    const encryptedToken = encryptPlaneToken(token.access_token);
+    stage = "persistence";
     const existing = await prisma.planeInstallation.findUnique({
       where: { organizationId: pending.organizationId },
       include: { projectLinks: { select: { id: true } } },
@@ -90,10 +118,10 @@ export async function GET(req: NextRequest) {
     const data = {
       appInstallationId: installationId,
       workspaceId: remote.workspace,
-      workspaceSlug: remote.workspace_detail.slug,
-      workspaceName: remote.workspace_detail.name,
+      workspaceSlug: workspace.slug,
+      workspaceName: workspace.name,
       botUserId: remote.app_bot,
-      accessToken: encryptPlaneToken(token.access_token),
+      accessToken: encryptedToken,
       tokenExpiresAt: new Date(Date.now() + token.expires_in * 1000),
       healthState: "connected",
       installedById: member.id,
@@ -104,7 +132,27 @@ export async function GET(req: NextRequest) {
       update: data,
     });
     return finish("plane=connected");
-  } catch {
-    return finish("error=plane_authorization_failed");
+  } catch (error) {
+    let code: string = `plane_${stage}_failed`;
+    if (error instanceof PlaneOAuthConfigurationError)
+      code = "plane_oauth_not_configured";
+    else if (error instanceof PlaneTokenResponseError)
+      code = `plane_token_response_${error.reason}`;
+    else if (error instanceof PlaneApiError)
+      code = `plane_${stage}_http_${error.status}`;
+    else if (stage === "installation_lookup" && error instanceof SyntaxError)
+      code = "plane_installation_lookup_invalid_response";
+    else if (stage === "encryption") code = "plane_encryption_configuration";
+    else if (
+      stage === "persistence" &&
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "P2002"
+    )
+      code = "plane_persistence_conflict";
+    // Only our stage and fixed error code are logged; provider bodies and database errors may contain credentials.
+    console.warn("Plane OAuth callback failed", { stage, code });
+    return finish(`error=${code}`);
   }
 }

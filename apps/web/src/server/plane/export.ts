@@ -55,6 +55,26 @@ export async function queuePlaneExport(
   return job;
 }
 
+export async function resumePlaneScreenshotExport(
+  feedbackId: string,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  // A late widget image may resume an existing export, but must never create a manual export intent.
+  return tx.planeExport.updateMany({
+    where: {
+      feedbackId,
+      screenshotStatus: { not: "complete" },
+      status: { not: "needs_attention" },
+      feedback: { screenshotId: { not: null } },
+    },
+    data: {
+      screenshotStatus: "pending",
+      status: "pending",
+      nextAttemptAt: new Date(),
+    },
+  });
+}
+
 type PlaneIssue = {
   id: string;
   description_html?: string;
@@ -192,9 +212,21 @@ export async function processPlaneExport(feedbackId: string) {
     let remoteLink = feedback.planeIssueLink;
     if (!remoteLink) {
       const correlation = `external_source=faster-fixes&external_id=${encodeURIComponent(feedbackId)}`;
-      const matches = await client.list<PlaneIssue>(
-        `${projectPath}/work-items/?${correlation}`,
-      );
+      let matches: PlaneIssue[];
+      try {
+        // Plane treats external correlation as a detail lookup: one object or 404.
+        matches = [
+          await client.request<PlaneIssue>(
+            `${projectPath}/work-items/?${correlation}`,
+          ),
+        ];
+      } catch (error) {
+        if (!(error instanceof PlaneApiError) || error.status !== 404)
+          throw error;
+        // One successful page distinguishes a missing match from an invalid project without scanning every issue.
+        await client.request(`${projectPath}/work-items/?per_page=1`);
+        matches = [];
+      }
       let intakeId: string | undefined;
       let issue = matches.find(
         (item) =>
@@ -366,13 +398,14 @@ export async function processPlaneExport(feedbackId: string) {
         data: { referenceWritten: true },
       });
     }
-    if (
-      job.screenshotStatus !== "complete" &&
-      job.screenshotStatus !== "absent"
-    ) {
-      if (feedback.screenshot) {
+    if (job.screenshotStatus !== "complete") {
+      const latest = await prisma.feedback.findUniqueOrThrow({
+        where: { id: feedbackId },
+        select: { screenshot: true },
+      });
+      if (latest.screenshot) {
         const response = await fetch(
-          await getSignedAssetUrl(feedback.screenshot),
+          await getSignedAssetUrl(latest.screenshot),
           { signal: AbortSignal.timeout(30_000) },
         );
         if (!response.ok)
@@ -396,11 +429,17 @@ export async function processPlaneExport(feedbackId: string) {
               },
             }),
         );
+        await prisma.planeExport.update({
+          where: { feedbackId },
+          data: { screenshotStatus: "complete" },
+        });
+      } else {
+        // The widget uploads separately. Do not overwrite a pending stage if its image arrived after our read.
+        await prisma.planeExport.updateMany({
+          where: { feedbackId, feedback: { screenshotId: null } },
+          data: { screenshotStatus: "absent" },
+        });
       }
-      await prisma.planeExport.update({
-        where: { feedbackId },
-        data: { screenshotStatus: feedback.screenshot ? "complete" : "absent" },
-      });
     }
     if (
       job.diagnosticsStatus !== "complete" &&
@@ -450,10 +489,23 @@ export async function processPlaneExport(feedbackId: string) {
         },
       });
     }
-    await prisma.planeExport.update({
-      where: { feedbackId },
+    const completed = await prisma.planeExport.updateMany({
+      where: {
+        feedbackId,
+        lockedUntil: lease,
+        OR: [
+          { screenshotStatus: "complete" },
+          { screenshotStatus: "absent", feedback: { screenshotId: null } },
+        ],
+      },
       data: { status: "complete", lastError: null },
     });
+    if (!completed.count) {
+      await prisma.planeExport.updateMany({
+        where: { feedbackId, lockedUntil: lease },
+        data: { status: "pending", nextAttemptAt: new Date() },
+      });
+    }
     return remoteLink;
   } catch (error) {
     const job = await prisma.planeExport.findUnique({ where: { feedbackId } });

@@ -27,22 +27,66 @@ export const decryptPlaneToken = (value: string) => cipher().decrypt(value);
 export const isPlaneEnabled = () => process.env.PLANE_ENABLED === "true";
 
 export class PlaneApiError extends Error {
-  constructor(public readonly status: number) {
+  constructor(
+    public readonly status: number,
+    operation?: string,
+  ) {
     super(
-      `Plane request failed (HTTP ${status}). Check integration permissions and configuration.`,
+      `Plane request failed${operation ? ` during ${operation}` : ""} (HTTP ${status}). Check integration permissions and configuration.`,
     );
+  }
+}
+
+function requestOperation(path: string, method: string) {
+  const resources = new Set([
+    "workspaces",
+    "projects",
+    "members",
+    "project-members",
+    "states",
+    "work-items",
+    "work-item-types",
+    "work-item-properties",
+    "values",
+    "intake-issues",
+    "comments",
+    "attachments",
+    "app-installation",
+  ]);
+  const resource = path
+    .split("?")[0]!
+    .split("/")
+    .filter((segment) => resources.has(segment))
+    .join("/");
+  const verb = ["GET", "POST", "PATCH", "PUT", "DELETE"].includes(method)
+    ? method
+    : "REQUEST";
+  // Only fixed resource names enter persisted errors; IDs, query strings and bodies may be sensitive.
+  return `${verb} ${resource || "API"}`;
+}
+
+export class PlaneOAuthConfigurationError extends Error {
+  constructor() {
+    super("Plane OAuth client credentials are not configured.");
+  }
+}
+
+export class PlaneTokenResponseError extends Error {
+  constructor(public readonly reason: "json" | "access_token" | "expires_in") {
+    super(`Invalid Plane token response: ${reason}.`);
   }
 }
 
 export async function requestBotToken(appInstallationId: string) {
   const id = process.env.PLANE_CLIENT_ID;
   const secret = process.env.PLANE_CLIENT_SECRET;
-  if (!id || !secret) throw new Error("Plane OAuth is not configured.");
+  if (!id || !secret) throw new PlaneOAuthConfigurationError();
   const response = await fetch(`${PLANE_ORIGIN}/auth/o/token/`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${Buffer.from(`${id}:${secret}`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": "FasterFixes/1.0",
     },
     body: new URLSearchParams({
       grant_type: "client_credentials",
@@ -51,14 +95,32 @@ export async function requestBotToken(appInstallationId: string) {
     }),
     signal: AbortSignal.timeout(20_000),
   });
-  if (!response.ok) throw new PlaneApiError(response.status);
-  const data = (await response.json()) as {
-    access_token: string;
-    expires_in: number;
-  };
-  if (!data.access_token || !Number.isFinite(data.expires_in))
-    throw new Error("Invalid Plane token response.");
-  return data;
+  if (!response.ok) throw new PlaneApiError(response.status, "token exchange");
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    throw new PlaneTokenResponseError("json");
+  }
+  if (
+    !data ||
+    typeof data !== "object" ||
+    !("access_token" in data) ||
+    typeof data.access_token !== "string" ||
+    !data.access_token.trim()
+  ) {
+    throw new PlaneTokenResponseError("access_token");
+  }
+  if (
+    !("expires_in" in data) ||
+    typeof data.expires_in !== "number" ||
+    !Number.isFinite(data.expires_in) ||
+    data.expires_in <= 0 ||
+    !Number.isFinite(new Date(Date.now() + data.expires_in * 1000).getTime())
+  ) {
+    throw new PlaneTokenResponseError("expires_in");
+  }
+  return { access_token: data.access_token, expires_in: data.expires_in };
 }
 
 export class PlaneClient {
@@ -84,6 +146,7 @@ export class PlaneClient {
       headers: {
         Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
+        "User-Agent": "FasterFixes/1.0",
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
@@ -95,7 +158,7 @@ export class PlaneClient {
           where: { id: this.installationId },
           data: { healthState: "reconnect_required" },
         });
-      throw new PlaneApiError(response.status);
+      throw new PlaneApiError(response.status, requestOperation(path, method));
     }
     return (response.status === 204 ? undefined : await response.json()) as T;
   }

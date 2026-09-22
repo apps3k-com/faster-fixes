@@ -64,10 +64,19 @@ persisted exports and events when initial delivery was missed, and reconciles
 remote status and discussions. A healthy web process alone does not prove the
 background processing is running.
 
+After deployment, resync the application with Inngest so changed function
+definitions are registered. For this Next.js serve endpoint, an out-of-band sync
+can be triggered with `curl -X PUT https://<ff-host>/api/inngest`. Check for a
+successful registration response and verify an actual function run. Self-hosted
+Inngest does not poll application definitions by default.
+
 Feedback and its Plane export intent commit in one database transaction. Export
 stages persist independently: work item, reference property, image, diagnostic
 Markdown. Downloads use FF storage access; Plane receives actual uploaded files.
 If there is no screenshot or diagnostic data, the stage is recorded as absent.
+The widget uploads screenshots after feedback creation. A later screenshot
+reopens the image stage of an existing export without creating a new work item
+or another diagnostic attachment. It never starts an unrequested manual export.
 
 The feedback panel displays remote links, stage states, assignment fallback and
 errors. Retry resumes the operation. An uncertain creation is reconciled by
@@ -138,15 +147,29 @@ local FF/database checks separately from actual Plane Cloud E2E evidence.
   from an untouched HEAD archive. UI lint reports unused `children` in combobox;
   agent lint baseline contains 198 warnings. No source warning suppression was
   added. Generated Next/MDX output is excluded from lint.
-- Live Plane OAuth, invitations, exports, attachments, webhook delivery and
-  bidirectional comments remain unverified until test credentials and an eligible
-  test project are supplied. Read-only capability inspection found no types or
-  properties in FFA3K; workspace property access reports a plan limitation.
-  Do not treat mocked transport checks as Cloud acceptance.
+- Passed against the deployed FF instance and Plane Cloud: OAuth connection,
+  connection persistence, creating and linking the dedicated FF project
+  `Plane E2E Validation` to `FFTEST`, selecting a writable `FF Issue ID` text
+  property on the active Task type, enabling status mappings and comment sync.
+- Passed with the actual React widget against deployed FF: reviewer creation,
+  feedback submission, screenshot upload and diagnostic capture. Test feedback:
+  `c5422aca-bccf-4bcc-bf04-87414bebc979`.
+- The manual export was durably queued. Inngest app registration returned
+  `Successfully registered` with `modified: true`; a subsequent test event was
+  accepted. The running export then reported Plane HTTP 404. Read-only Cloud
+  probes isolated the cause: an external-ID lookup returns 404 for no match and
+  a single work item for a match, rather than the ordinary list shape. The
+  corrected lookup still needs deployed acceptance. Live issue creation,
+  attachments, webhook/status/comment sync and invitations remain unverified.
+- The late-screenshot regression passed against isolated PostgreSQL with mocked
+  Plane/storage: completed and in-flight exports resume without duplicate issues
+  or diagnostics; unrequested manual exports remain unqueued. This fix still
+  needs deployed widget acceptance. Do not treat mocked checks as Cloud acceptance.
 
 ## Sources
 
 - [OAuth bot flow](https://developers.plane.so/dev-tools/build-plane-app/choose-token-flow)
 - [Webhook v2 contract](https://developers.plane.so/dev-tools/intro-webhooks)
+- [Inngest self-hosting and sync polling](https://www.inngest.com/docs/self-hosting)
 - [Attachment upload](https://developers.plane.so/api-reference/issue-attachments/overview)
 - [Planning project](https://app.plane.so/apps3k/projects/e1138ec3-3f29-4c1a-89db-5700fa976152/issues), FFA3K-1 through FFA3K-10

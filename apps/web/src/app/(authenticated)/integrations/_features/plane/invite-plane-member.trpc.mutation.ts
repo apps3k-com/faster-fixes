@@ -29,6 +29,7 @@ export const invitePlaneMember = planAwareProcedure
           email: input.email,
           role: "member",
           organizationId: input.organizationId,
+          resend: true,
         },
         headers: ctx.headers,
       });

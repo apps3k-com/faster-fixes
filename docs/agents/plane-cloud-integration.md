@@ -176,18 +176,23 @@ delivery. It is not proof of live Plane webhook delivery.
   `5b754931-0f7d-4bf1-8eb2-2dbb8f81ae31` became `FFTEST-2` in Todo, assigned to
   the matching reviewer email's Plane member, with both attachments and FF ID.
 - FF comment creation and editing appeared in Plane. A Plane-origin comment
-  appeared read-only in FF through scheduled reconciliation. The webhook inbox
-  remained empty; immediate inbound webhook delivery is not yet verified.
+  appeared read-only in FF through scheduled reconciliation.
 - Intake feedback `e6bc354c-622d-4dfb-8292-a7ceb4d36fd1` created pending
   `FFTEST-3`, but export stopped safely as `needs_attention` because the deployed
   code expected a nested issue instead of Plane's issue UUID plus `issue_detail`.
   No duplicate was created. The follow-up adapter accepts both response shapes,
   recovers uncertain creation by its FF reference, and updates pending metadata
   through the Intake endpoint without accepting the item. Its isolated database
-  harness passes; pending custom-property writes still need Cloud acceptance.
-- Plane In Progress mapped to FF In Progress through scheduled reconciliation
-  at approximately 16:20 UTC. Intake completion, immediate webhook delivery,
-  the Done transition and invitation delivery remain open acceptance gates.
+  harness passes. After PR #9 (`c178fb3`) deployed, retrying the same feedback
+  resumed FFTEST-3 exactly once: Plane showed the exact custom-property UUID,
+  email-mapped assignee, Task type, diagnostic Markdown and screenshot (744 KB).
+- Accepted FFTEST-3 was moved to Plane In Progress and Done. Both changes reached
+  FF within ten seconds as In Progress and Resolved, respectively. A newly posted
+  Plane comment also appeared read-only in FF within ten seconds. This is live
+  acceptance of the signed OAuth app webhook path, status mappings and inbound
+  comment synchronization; it is not merely scheduled reconciliation.
+- Invitation delivery remains the only unexercised live acceptance gate because
+  no recipient has been authorized for a real invitation.
 - The late-screenshot regression passed against isolated PostgreSQL with mocked
   Plane/storage: completed and in-flight exports resume without duplicate issues
   or diagnostics; unrequested manual exports remain unqueued. The automatic

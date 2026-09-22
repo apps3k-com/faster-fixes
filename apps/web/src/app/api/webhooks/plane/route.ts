@@ -3,6 +3,7 @@ import type { Prisma } from "@workspace/db/generated/prisma/client";
 import { inngest } from "@/server/inngest";
 import { isPlaneEnabled } from "@/server/plane/client";
 import { verifyPlaneWebhook } from "@/server/plane/verify-webhook";
+import { normalizePlaneWebhook } from "@/server/plane/normalize-webhook";
 
 export async function POST(request: Request) {
   if (!isPlaneEnabled()) return new Response(null, { status: 404 });
@@ -16,19 +17,12 @@ export async function POST(request: Request) {
     )
   )
     return new Response(null, { status: 401 });
-  let payload: Record<string, unknown>;
-  try {
-    payload = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
+  const normalized = normalizePlaneWebhook(raw);
+  if (normalized.status === "invalid")
     return new Response(null, { status: 400 });
-  }
-  if (
-    payload.version !== "v2" ||
-    typeof payload.event_id !== "string" ||
-    typeof payload.workspace_id !== "string" ||
-    typeof payload.event !== "string"
-  )
-    return new Response(null, { status: 400 });
+  if (normalized.status === "ignored")
+    return new Response(null, { status: 202 });
+  const payload = normalized.payload;
   const installation = await prisma.planeInstallation.findUnique({
     where: { workspaceId: payload.workspace_id },
   });

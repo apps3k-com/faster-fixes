@@ -34,10 +34,22 @@ export class PlaneApiError extends Error {
   }
 }
 
+export class PlaneOAuthConfigurationError extends Error {
+  constructor() {
+    super("Plane OAuth client credentials are not configured.");
+  }
+}
+
+export class PlaneTokenResponseError extends Error {
+  constructor(public readonly reason: "json" | "access_token" | "expires_in") {
+    super(`Invalid Plane token response: ${reason}.`);
+  }
+}
+
 export async function requestBotToken(appInstallationId: string) {
   const id = process.env.PLANE_CLIENT_ID;
   const secret = process.env.PLANE_CLIENT_SECRET;
-  if (!id || !secret) throw new Error("Plane OAuth is not configured.");
+  if (!id || !secret) throw new PlaneOAuthConfigurationError();
   const response = await fetch(`${PLANE_ORIGIN}/auth/o/token/`, {
     method: "POST",
     headers: {
@@ -52,13 +64,31 @@ export async function requestBotToken(appInstallationId: string) {
     signal: AbortSignal.timeout(20_000),
   });
   if (!response.ok) throw new PlaneApiError(response.status);
-  const data = (await response.json()) as {
-    access_token: string;
-    expires_in: number;
-  };
-  if (!data.access_token || !Number.isFinite(data.expires_in))
-    throw new Error("Invalid Plane token response.");
-  return data;
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    throw new PlaneTokenResponseError("json");
+  }
+  if (
+    !data ||
+    typeof data !== "object" ||
+    !("access_token" in data) ||
+    typeof data.access_token !== "string" ||
+    !data.access_token.trim()
+  ) {
+    throw new PlaneTokenResponseError("access_token");
+  }
+  if (
+    !("expires_in" in data) ||
+    typeof data.expires_in !== "number" ||
+    !Number.isFinite(data.expires_in) ||
+    data.expires_in <= 0 ||
+    !Number.isFinite(new Date(Date.now() + data.expires_in * 1000).getTime())
+  ) {
+    throw new PlaneTokenResponseError("expires_in");
+  }
+  return { access_token: data.access_token, expires_in: data.expires_in };
 }
 
 export class PlaneClient {

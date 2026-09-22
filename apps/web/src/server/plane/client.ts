@@ -27,11 +27,42 @@ export const decryptPlaneToken = (value: string) => cipher().decrypt(value);
 export const isPlaneEnabled = () => process.env.PLANE_ENABLED === "true";
 
 export class PlaneApiError extends Error {
-  constructor(public readonly status: number) {
+  constructor(
+    public readonly status: number,
+    operation?: string,
+  ) {
     super(
-      `Plane request failed (HTTP ${status}). Check integration permissions and configuration.`,
+      `Plane request failed${operation ? ` during ${operation}` : ""} (HTTP ${status}). Check integration permissions and configuration.`,
     );
   }
+}
+
+function requestOperation(path: string, method: string) {
+  const resources = new Set([
+    "workspaces",
+    "projects",
+    "members",
+    "project-members",
+    "states",
+    "work-items",
+    "work-item-types",
+    "work-item-properties",
+    "values",
+    "intake-issues",
+    "comments",
+    "attachments",
+    "app-installation",
+  ]);
+  const resource = path
+    .split("?")[0]!
+    .split("/")
+    .filter((segment) => resources.has(segment))
+    .join("/");
+  const verb = ["GET", "POST", "PATCH", "PUT", "DELETE"].includes(method)
+    ? method
+    : "REQUEST";
+  // Only fixed resource names enter persisted errors; IDs, query strings and bodies may be sensitive.
+  return `${verb} ${resource || "API"}`;
 }
 
 export class PlaneOAuthConfigurationError extends Error {
@@ -55,6 +86,7 @@ export async function requestBotToken(appInstallationId: string) {
     headers: {
       Authorization: `Basic ${Buffer.from(`${id}:${secret}`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": "FasterFixes/1.0",
     },
     body: new URLSearchParams({
       grant_type: "client_credentials",
@@ -63,7 +95,7 @@ export async function requestBotToken(appInstallationId: string) {
     }),
     signal: AbortSignal.timeout(20_000),
   });
-  if (!response.ok) throw new PlaneApiError(response.status);
+  if (!response.ok) throw new PlaneApiError(response.status, "token exchange");
   let data: unknown;
   try {
     data = await response.json();
@@ -114,6 +146,7 @@ export class PlaneClient {
       headers: {
         Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
+        "User-Agent": "FasterFixes/1.0",
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
@@ -125,7 +158,7 @@ export class PlaneClient {
           where: { id: this.installationId },
           data: { healthState: "reconnect_required" },
         });
-      throw new PlaneApiError(response.status);
+      throw new PlaneApiError(response.status, requestOperation(path, method));
     }
     return (response.status === 204 ? undefined : await response.json()) as T;
   }

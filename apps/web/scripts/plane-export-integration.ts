@@ -73,6 +73,8 @@ const png = Buffer.from(
 );
 const actualFetch = globalThis.fetch;
 let failNextReference = false;
+let loseNextCreateResponse = false;
+let denyProjectListing = false;
 let duringDiagnosticUpload: (() => Promise<void>) | null = null;
 
 function response(data: unknown, status = 200) {
@@ -160,14 +162,25 @@ globalThis.fetch = async (input, init) => {
     return response({ id: issue.intakeId, issue }, 201);
   }
   if (path.endsWith("/work-items/")) {
-    if (method === "GET")
-      return page(
-        [...remoteIssues.values()].filter(
-          (issue) =>
-            issue.external_id === url.searchParams.get("external_id") &&
-            issue.external_source === url.searchParams.get("external_source"),
-        ),
+    if (method === "GET") {
+      if (!url.searchParams.has("external_id")) {
+        assert.equal(url.searchParams.get("per_page"), "1");
+        assert.equal(url.searchParams.has("cursor"), false);
+        if (denyProjectListing)
+          return response({ error: "Project not found" }, 404);
+        return response({
+          results: [...remoteIssues.values()].slice(0, 1),
+          next_page_results: true,
+          next_cursor: "must-not-follow",
+        });
+      }
+      const match = [...remoteIssues.values()].find(
+        (issue) =>
+          issue.external_id === url.searchParams.get("external_id") &&
+          issue.external_source === url.searchParams.get("external_source"),
       );
+      return match ? response(match) : response({ error: "Not found" }, 404);
+    }
     const issue: RemoteIssue = {
       ...body,
       id: randomUUID(),
@@ -177,6 +190,10 @@ globalThis.fetch = async (input, init) => {
       description_html: String(body.description_html),
     };
     remoteIssues.set(issue.id, issue);
+    if (loseNextCreateResponse) {
+      loseNextCreateResponse = false;
+      return response({ error: "Response lost after creation" }, 503);
+    }
     return response(issue, 201);
   }
   const issueId = path.match(/\/work-items\/([^/]+)\//)?.[1];
@@ -574,6 +591,51 @@ async function main() {
     "Attaching a screenshot must not start a manual export.",
   );
 
+  const uncertain = await newFeedback("Created remotely, response lost");
+  await queuePlaneExport(uncertain.id, true);
+  const beforeUncertain = remoteIssues.size;
+  loseNextCreateResponse = true;
+  await assert.rejects(() => processPlaneExport(uncertain.id), /HTTP 503/);
+  assert.equal(remoteIssues.size, beforeUncertain + 1);
+  assert.equal(
+    await prisma.feedbackPlaneIssueLink.findUnique({
+      where: { feedbackId: uncertain.id },
+    }),
+    null,
+  );
+  await processPlaneExport(uncertain.id);
+  assert.equal(
+    remoteIssues.size,
+    beforeUncertain + 1,
+    "An exact external-ID lookup returns one object and must recover the existing issue.",
+  );
+  assert.equal(
+    (
+      await prisma.planeExport.findUniqueOrThrow({
+        where: { feedbackId: uncertain.id },
+      })
+    ).status,
+    "complete",
+  );
+
+  const inaccessible = await newFeedback("Project is inaccessible");
+  await queuePlaneExport(inaccessible.id, true);
+  const callsBeforeInaccessible = calls.length;
+  const issuesBeforeInaccessible = remoteIssues.size;
+  denyProjectListing = true;
+  await assert.rejects(() => processPlaneExport(inaccessible.id), /HTTP 404/);
+  denyProjectListing = false;
+  assert.equal(remoteIssues.size, issuesBeforeInaccessible);
+  assert.equal(calls.length - callsBeforeInaccessible, 2);
+  assert.equal(
+    (
+      await prisma.planeExport.findUniqueOrThrow({
+        where: { feedbackId: inaccessible.id },
+      })
+    ).createAttemptedAt,
+    null,
+  );
+
   console.log(
     JSON.stringify({
       evidence:
@@ -586,6 +648,8 @@ async function main() {
         "custom field references",
         "image and Markdown multipart uploads",
         "partial and complete export retry deduplication",
+        "external lookup 404 and singleton recovery after an uncertain creation",
+        "constant-size project access validation; inaccessible project fails before creation",
         "missing-field preflight",
         "durable webhook status processing and deduplication",
         "late screenshots resume complete/in-flight exports without duplicate issues or diagnostics; manual mode preserved",

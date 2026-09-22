@@ -212,9 +212,21 @@ export async function processPlaneExport(feedbackId: string) {
     let remoteLink = feedback.planeIssueLink;
     if (!remoteLink) {
       const correlation = `external_source=faster-fixes&external_id=${encodeURIComponent(feedbackId)}`;
-      const matches = await client.list<PlaneIssue>(
-        `${projectPath}/work-items/?${correlation}`,
-      );
+      let matches: PlaneIssue[];
+      try {
+        // Plane treats external correlation as a detail lookup: one object or 404.
+        matches = [
+          await client.request<PlaneIssue>(
+            `${projectPath}/work-items/?${correlation}`,
+          ),
+        ];
+      } catch (error) {
+        if (!(error instanceof PlaneApiError) || error.status !== 404)
+          throw error;
+        // One successful page distinguishes a missing match from an invalid project without scanning every issue.
+        await client.request(`${projectPath}/work-items/?per_page=1`);
+        matches = [];
+      }
       let intakeId: string | undefined;
       let issue = matches.find(
         (item) =>

@@ -7,8 +7,16 @@ import { subscriptionFeatureRouter } from "@/app/_features/subscription/_utils/t
 import { adminRouter } from "@/app/admin/_utils/trpc-router";
 import { onboardingRouter } from "@/app/onboarding/_utils/trpc-router";
 import { mergeRouters, router } from "../trpc";
+import { getPlaneExport } from "@/app/(authenticated)/(project)/inbox/_features/feedback-panel/get-plane-export.trpc.query";
+import { createPlaneIssueForFeedback } from "@/app/(authenticated)/(project)/inbox/_features/feedback-panel/create-plane-issue-for-feedback.trpc.mutation";
+import { feedbackDiscussionRouter } from "@/app/(authenticated)/(project)/inbox/_features/feedback-discussion/discussion-router";
 
 export const appRouter = router({
+  planeFeedback: router({
+    getExport: getPlaneExport,
+    createIssue: createPlaneIssueForFeedback,
+  }),
+  feedbackDiscussion: feedbackDiscussionRouter,
   auth: mergeRouters(authRouter, authenticationFeatureRouter),
   authenticated: authenticatedRouter,
   onboarding: onboardingRouter,

@@ -17,6 +17,8 @@ import { ScreenshotDialog } from "./screenshot-dialog.client";
 import { StatusSelect } from "./status-select.client";
 import { TrackersSection } from "./trackers-section.client";
 import { ViewDiagnosticsDialog } from "./view-diagnostics-dialog.client";
+import { PlaneIssueBadge } from "./plane-issue-badge.client";
+import { FeedbackDiscussion } from "../feedback-discussion/feedback-discussion.client";
 
 type FeedbackItem = GetFeedbackOutput[number];
 
@@ -127,9 +129,7 @@ export function FeedbackDetailPanel({
             (() => {
               const md = feedback.metadata as Record<string, unknown>;
               const hasContext =
-                md.elementDescription ||
-                md.reactComponentPath ||
-                md.sourceFile;
+                md.elementDescription || md.reactComponentPath || md.sourceFile;
               if (!hasContext) return null;
               return (
                 <>
@@ -186,10 +186,7 @@ export function FeedbackDetailPanel({
 
           <Separator />
 
-          <StatusSelect
-            feedbackId={feedback.id}
-            value={feedback.status}
-          />
+          <StatusSelect feedbackId={feedback.id} value={feedback.status} />
 
           <TrackersSection
             feedbackId={feedback.id}
@@ -206,6 +203,9 @@ export function FeedbackDetailPanel({
             feedbackId={feedback.id}
             value={feedback.assignee?.id ?? null}
           />
+
+          <PlaneIssueBadge feedbackId={feedback.id} />
+          <FeedbackDiscussion key={feedback.id} feedbackId={feedback.id} />
 
           <Separator />
 

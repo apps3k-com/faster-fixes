@@ -9,6 +9,7 @@ import { DeleteProjectButton } from "./delete/delete-project-button.client";
 import { GitHubSection } from "./github/github-section.client";
 import { JiraSection } from "./jira/jira-section.client";
 import { LinearSection } from "./linear/linear-section.client";
+import { PlaneSection } from "./plane/plane-section.client";
 import { SlackSection } from "./slack/slack-section.client";
 import { UpdateProjectForm } from "./update/update-project-form.client";
 
@@ -19,6 +20,15 @@ type ProjectSettingsTabProps = {
 export function ProjectSettingsTab({ projectId }: ProjectSettingsTabProps) {
   return (
     <div className="flex flex-col gap-12">
+      <DashboardSection
+        title="Plane"
+        description="Link a Plane Cloud project and configure feedback export and status sync."
+        cardTitle="Plane integration"
+        cardClassName="lg:max-w-lg"
+      >
+        <PlaneSection projectId={projectId} />
+      </DashboardSection>
+
       <DashboardSection
         title="Project information"
         description="Edit the name, URL, and widget configuration."

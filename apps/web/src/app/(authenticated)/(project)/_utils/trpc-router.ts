@@ -37,12 +37,21 @@ import { listLinearTeamLabels } from "../settings/_features/linear/link-team/lis
 import { listLinearTeamStates } from "../settings/_features/linear/link-team/list-team-states.trpc.query";
 import { unlinkLinearTeam } from "../settings/_features/linear/unlink-team/unlink-team.trpc.mutation";
 import { updateProjectLinearLink } from "../settings/_features/linear/update-link/update-project-linear-link.trpc.mutation";
+import { getProjectPlaneLink } from "../settings/_features/plane/get-project-plane-link.trpc.query";
+import { linkPlaneProject } from "../settings/_features/plane/link-plane-project.trpc.mutation";
+import {
+  listPlaneCatalog,
+  listPlaneProjects,
+} from "../settings/_features/plane/list-plane-catalog.trpc.query";
+import { unlinkPlaneProject } from "../settings/_features/plane/unlink-plane-project.trpc.mutation";
+import { updateProjectPlaneLink } from "../settings/_features/plane/update-project-plane-link.trpc.mutation";
 import { getProjectSlackLink } from "../settings/_features/slack/get-project-slack-link.trpc.query";
 import { listSlackChannels } from "../settings/_features/slack/link-channel/list-slack-channels.trpc.query";
 import { setProjectSlackChannel } from "../settings/_features/slack/link-channel/set-project-slack-channel.trpc.mutation";
 import { updateProjectSlackLink } from "../settings/_features/slack/update-link/update-project-slack-link.trpc.mutation";
 import { regenerateApiKey } from "../settings/_features/regenerate-api-key/regenerate-api-key.trpc.mutation";
 import { updateProject } from "../settings/_features/update/update-project.trpc.mutation";
+import { updateReviewerEmail } from "../reviewers/_features/update/update-reviewer-email.trpc.mutation";
 import { getProjects } from "./get-projects.trpc.query";
 
 export const projectsRouter = router({
@@ -58,6 +67,7 @@ export const projectsRouter = router({
     revoke: revokeReviewer,
     restore: restoreReviewer,
     delete: deleteReviewer,
+    updateEmail: updateReviewerEmail,
   }),
   feedback: router({
     list: getFeedback,
@@ -96,6 +106,14 @@ export const projectsRouter = router({
     linkProject: linkJiraProject,
     unlinkProject: unlinkJiraProject,
     updateLink: updateProjectJiraLink,
+  }),
+  plane: router({
+    getLink: getProjectPlaneLink,
+    listProjects: listPlaneProjects,
+    listCatalog: listPlaneCatalog,
+    linkProject: linkPlaneProject,
+    unlinkProject: unlinkPlaneProject,
+    updateLink: updateProjectPlaneLink,
   }),
   slack: router({
     getLink: getProjectSlackLink,

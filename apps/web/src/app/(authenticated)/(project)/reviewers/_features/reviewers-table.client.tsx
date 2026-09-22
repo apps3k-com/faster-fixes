@@ -17,6 +17,7 @@ import type { GetReviewersOutput } from "./get-reviewers.trpc.query";
 import { DeleteReviewerButton } from "./delete/delete-reviewer-button.client";
 import { RestoreReviewerButton } from "./restore/restore-reviewer-button.client";
 import { RevokeReviewerButton } from "./revoke/revoke-reviewer-button.client";
+import { ReviewerEmailEditor } from "./update/reviewer-email-editor.client";
 
 type ReviewersTableProps = {
   projectId: string;
@@ -37,6 +38,7 @@ export function ReviewersTable({ projectId, reviewers }: ReviewersTableProps) {
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
+          <TableHead>Email</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Feedback</TableHead>
           <TableHead>Share link</TableHead>
@@ -47,6 +49,13 @@ export function ReviewersTable({ projectId, reviewers }: ReviewersTableProps) {
         {reviewers.map((reviewer) => (
           <TableRow key={reviewer.id}>
             <TableCell className="font-medium">{reviewer.name}</TableCell>
+            <TableCell>
+              <ReviewerEmailEditor
+                projectId={projectId}
+                reviewerId={reviewer.id}
+                email={reviewer.email}
+              />
+            </TableCell>
             <TableCell>
               {reviewer.isActive ? (
                 <Badge variant="default">Active</Badge>

@@ -4,6 +4,7 @@ import { validateOrigin } from "@/server/api/validate-origin";
 import { validateReviewer } from "@/server/api/validate-reviewer";
 import { checkResourceLimit } from "@/server/auth/subscription";
 import { inngest } from "@/server/inngest";
+import { queuePlaneExport } from "@/server/plane/export";
 import { s3Client } from "@/server/storage";
 import { createAsset } from "@/server/storage/create-asset";
 import { getSignedAssetUrl } from "@/server/storage/get-signed-asset-url";
@@ -70,7 +71,10 @@ export async function POST(req: NextRequest) {
   const reviewerToken = req.headers.get("x-reviewer-token");
   const reviewer = await validateReviewer(reviewerToken, project.id);
   if (!reviewer) {
-    return NextResponse.json({ error: "Invalid reviewer token" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Invalid reviewer token" },
+      { status: 403 },
+    );
   }
 
   const { allowed } = await checkRateLimit(project.id, "submit");
@@ -205,28 +209,32 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const feedback = await prisma.feedback.create({
-    data: {
-      projectId: project.id,
-      reviewerId: reviewer.id,
-      comment: data.comment,
-      pageUrl: data.pageUrl,
-      clickX: data.clickX,
-      clickY: data.clickY,
-      selector: data.selector,
-      browserName: data.browserName,
-      browserVersion: data.browserVersion,
-      os: data.os,
-      viewportWidth: data.viewportWidth,
-      viewportHeight: data.viewportHeight,
-      metadata: data.metadata,
-      diagnosticTrail: data.diagnosticTrail,
-      screenshotId,
-    },
-    include: {
-      reviewer: { select: { id: true, name: true } },
-      screenshot: { select: { key: true, provider: true, bucket: true } },
-    },
+  const feedback = await prisma.$transaction(async (tx) => {
+    const created = await tx.feedback.create({
+      data: {
+        projectId: project.id,
+        reviewerId: reviewer.id,
+        comment: data.comment,
+        pageUrl: data.pageUrl,
+        clickX: data.clickX,
+        clickY: data.clickY,
+        selector: data.selector,
+        browserName: data.browserName,
+        browserVersion: data.browserVersion,
+        os: data.os,
+        viewportWidth: data.viewportWidth,
+        viewportHeight: data.viewportHeight,
+        metadata: data.metadata,
+        diagnosticTrail: data.diagnosticTrail,
+        screenshotId,
+      },
+      include: {
+        reviewer: { select: { id: true, name: true } },
+        screenshot: { select: { key: true, provider: true, bucket: true } },
+      },
+    });
+    await queuePlaneExport(created.id, false, tx);
+    return created;
   });
 
   // Fire-and-forget: trigger GitHub issue creation if configured
@@ -270,7 +278,10 @@ export async function GET(req: NextRequest) {
   const reviewerToken = req.headers.get("x-reviewer-token");
   const reviewer = await validateReviewer(reviewerToken, project.id);
   if (!reviewer) {
-    return NextResponse.json({ error: "Invalid reviewer token" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Invalid reviewer token" },
+      { status: 403 },
+    );
   }
 
   const { allowed } = await checkRateLimit(project.id, "read");

@@ -40,7 +40,7 @@
     "@vercel/blob": "^2.3.1",
     "@workspace/db": "workspace:*",
     "@workspace/ui": "workspace:*",
-    "better-auth": "^1.5.4",
+    "better-auth": "^1.7.7",
     "class-variance-authority": "^0.7.1",
     "date-fns": "^4.1.0",
     "facehash": "^0.1.0",
